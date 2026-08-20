@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# codex-swapper — manage the modded Codex provider-switch harness.
+set -euo pipefail
+
+# Resolve PROJECT dynamically so `codex-swapper launch` works both from a
+# full checkout (~/opt/codex-swapper or /Users/pbarham/opt/codex-swapper) and
+# from a curl|bash install (only ~/.local/share/codex-swapper present).
+resolve_project() {
+  # 1. Explicit checkout locations (prefer current user's home)
+  for p in "$HOME/opt/codex-swapper" "/Users/pbarham/opt/codex-swapper"; do
+    if [ -f "$p/launch-tier2.sh" ]; then echo "$p"; return 0; fi
+  done
+  # 2. If we have a checkout next to this script's real location (dev)
+  local here
+  here="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd 2>/dev/null || true)"
+  # walk up looking for MOD_STATUS.md (repo root marker)
+  local d="$here"
+  for _ in 1 2 3 4 5; do
+    if [ -f "$d/MOD_STATUS.md" ] && [ -f "$d/launch-tier2.sh" ]; then echo "$d"; return 0; fi
+    d="$(dirname "$d")"
+  done
+  # 3. Fall back to share dir (curl|bash install)
+  echo "$HOME/.local/share/codex-swapper"
+}
+
+PROJECT="$(resolve_project)"
+
+usage() {
+  cat <<'EOF'
+codex-swapper — manage the modded Codex provider-switch harness
+
+usage:
+  codex-swapper launch            launch the desktop app with the modded release harness
+  codex-swapper update-mod [VER]  re-pin the fork to a new app/CLI release and rebuild
+  codex-swapper update-mod --bg   run the update in the background (log: /tmp/codex-swapper-update.log)
+  codex-swapper relaunch          quit the running app, then relaunch with the mod
+  codex-swapper status            show the pinned state (MOD_STATUS.md)
+  codex-swapper smoke             run the app-server stdio smoke test
+  codex-swapper fix-stuck <file>  truncate a rollout at the last completed/aborted turn
+  codex-swapper help              show this help
+EOF
+}
+
+# Resolve the launcher binary/script for launch/relaunch (portable)
+resolve_launcher() {
+  # Prefer the launcher next to the modded binary, then checkout, then share
+  for q in "$HOME/.local/bin/launch-tier2.sh" "$PROJECT/launch-tier2.sh" "$HOME/.local/share/codex-swapper/launch-tier2.sh" "/Users/pbarham/opt/codex-swapper/launch-tier2.sh"; do
+    if [ -f "$q" ]; then echo "$q"; return 0; fi
+  done
+  # Fallback: PROJECT may be share dir itself
+  if [ -f "$HOME/.local/share/codex-swapper/launch-tier2.sh" ]; then echo "$HOME/.local/share/codex-swapper/launch-tier2.sh"; return 0; fi
+  return 1
+}
+
+cmd="${1:-help}"
+case "$cmd" in
+  launch)
+    LAUNCHER="$(resolve_launcher || true)"
+    if [ -z "${LAUNCHER:-}" ] || [ ! -f "$LAUNCHER" ]; then
+      echo "error: launch-tier2.sh not found. Tried:" >&2
+      echo "  $PROJECT/launch-tier2.sh" >&2
+      echo "  $HOME/.local/share/codex-swapper/launch-tier2.sh" >&2
+      echo "hint: ./install.sh  or  curl -fsSL https://raw.githubusercontent.com/Pabce/codex-swapper/main/install.sh | bash" >&2
+      exit 1
+    fi
+    exec "$LAUNCHER"
+    ;;
+  update-mod)
+    shift
+    bg=0
+    args=()
+    for a in "$@"; do
+      if [ "$a" = "--bg" ] || [ "$a" = "-b" ]; then bg=1; else args+=("$a"); fi
+    done
+    # update-mod only makes sense with a full checkout
+    if [ ! -f "$PROJECT/update-mod.sh" ]; then
+      echo "error: update-mod needs a full checkout at $PROJECT (found $HOME/.local/share install only)" >&2
+      echo "hint: git clone https://github.com/Pabce/codex-swapper.git ~/opt/codex-swapper" >&2
+      exit 1
+    fi
+    if [ "$bg" = 1 ]; then
+      log="/tmp/codex-swapper-update.log"
+      echo "update-mod running in the background"
+      echo "  log: $log"
+      if [ "${#args[@]}" -gt 0 ]; then
+        nohup "$PROJECT/update-mod.sh" "${args[@]}" >"$log" 2>&1 &
+      else
+        nohup "$PROJECT/update-mod.sh" >"$log" 2>&1 &
+      fi
+      echo "  pid: $!"
+      echo "watch: tail -f $log   (finishes with '=== DONE ===')"
+      exit 0
+    fi
+    if [ "${#args[@]}" -gt 0 ]; then
+      exec "$PROJECT/update-mod.sh" "${args[@]}"
+    else
+      exec "$PROJECT/update-mod.sh"
+    fi
+    ;;
+  relaunch)
+    echo "quitting ChatGPT..."
+    osascript -e 'tell application "ChatGPT" to quit' 2>/dev/null || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      pgrep -qf 'ChatGPT.app/Contents/MacOS/ChatGPT' >/dev/null || break
+      sleep 1
+    done
+    if pgrep -qf 'ChatGPT.app/Contents/MacOS/ChatGPT' >/dev/null; then
+      echo "warning: ChatGPT did not quit within 10s; launching anyway" >&2
+    fi
+    LAUNCHER="$(resolve_launcher || true)"
+    if [ -z "${LAUNCHER:-}" ] || [ ! -f "$LAUNCHER" ]; then
+      echo "error: launch-tier2.sh not found for relaunch" >&2
+      exit 1
+    fi
+    exec "$LAUNCHER"
+    ;;
+  status)
+    if [ -f "$PROJECT/MOD_STATUS.md" ]; then cat "$PROJECT/MOD_STATUS.md"
+    elif [ -f "$HOME/.local/share/codex-swapper/MOD_STATUS.md" ]; then cat "$HOME/.local/share/codex-swapper/MOD_STATUS.md"
+    else echo "MOD_STATUS.md not found (no checkout). Pinned: 0.148.0-alpha.15 / app 26.814.41407" >&2; exit 1; fi
+    ;;
+  smoke)
+    if [ -f "$PROJECT/tier2_stdio_smoke.py" ]; then exec python3 "$PROJECT/tier2_stdio_smoke.py"
+    elif [ -f "$HOME/.local/share/codex-swapper/tier2_stdio_smoke.py" ]; then exec python3 "$HOME/.local/share/codex-swapper/tier2_stdio_smoke.py"
+    else echo "error: tier2_stdio_smoke.py not found. Need a checkout for smoke." >&2; exit 1; fi
+    ;;
+  fix-stuck)
+    shift
+    if [ -f "$PROJECT/fix-stuck-thread.py" ]; then exec python3 "$PROJECT/fix-stuck-thread.py" "$@"
+    else echo "error: fix-stuck needs a checkout at $PROJECT" >&2; exit 1; fi
+    ;;
+  help|-h|--help|"") usage ;;
+  *) echo "unknown command: $cmd" >&2; usage; exit 1 ;;
+esac

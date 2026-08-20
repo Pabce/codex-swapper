@@ -421,20 +421,29 @@ chmod +x "$LOCAL_BIN/codex-mod-us"
 # Install/update launch-tier2.sh and launch-us-proxy.sh in the checkout for dev ergonomics
 if [ -n "${SRCROOT:-}" ]; then
   # launch-tier2.sh is already in the repo; ensure it is executable
-  chmod +x "$SRCROOT/launch-tier2.sh" "$SRCROOT/launch-us-proxy.sh" 2>/dev/null || true
+  chmod +x "$SRCROOT/launch-tier2.sh" "$SRCROOT/launch-us-proxy.sh" "$SRCROOT/codex-swapper" 2>/dev/null || true
 fi
-# Also install them to ~/.local/bin-adjacent for curl|bash users who want the app launcher
+# Also install them to ~/.local/share for curl|bash users who want the app launcher
 if [ -n "${SRCROOT:-}" ] && [ -f "$SRCROOT/launch-tier2.sh" ]; then
   mkdir -p "$HOME/.local/share/codex-swapper"
   cp -p "$SRCROOT/launch-tier2.sh" "$HOME/.local/share/codex-swapper/launch-tier2.sh"
   cp -p "$SRCROOT/launch-us-proxy.sh" "$HOME/.local/share/codex-swapper/launch-us-proxy.sh" 2>/dev/null || true
   cp -p "$SRCROOT/us-forward-proxy.py" "$HOME/.local/share/codex-swapper/us-forward-proxy.py" 2>/dev/null || true
+  # codex-swapper CLI (portable)
+  if [ -f "$SRCROOT/codex-swapper" ]; then
+    install -m 755 "$SRCROOT/codex-swapper" "$LOCAL_BIN/codex-swapper"
+    cp -p "$SRCROOT/codex-swapper" "$HOME/.local/share/codex-swapper/codex-swapper" 2>/dev/null || true
+    cp -p "$SRCROOT/MOD_STATUS.md" "$HOME/.local/share/codex-swapper/MOD_STATUS.md" 2>/dev/null || true
+  fi
 else
   mkdir -p "$HOME/.local/share/codex-swapper"
   curl -fsSL -o "$HOME/.local/share/codex-swapper/launch-tier2.sh" "https://raw.githubusercontent.com/$REPO/main/launch-tier2.sh" 2>/dev/null || true
   curl -fsSL -o "$HOME/.local/share/codex-swapper/launch-us-proxy.sh" "https://raw.githubusercontent.com/$REPO/main/launch-us-proxy.sh" 2>/dev/null || true
   curl -fsSL -o "$HOME/.local/share/codex-swapper/us-forward-proxy.py" "https://raw.githubusercontent.com/$REPO/main/us-forward-proxy.py" 2>/dev/null || true
-  chmod +x "$HOME/.local/share/codex-swapper/launch-tier2.sh" "$HOME/.local/share/codex-swapper/launch-us-proxy.sh" 2>/dev/null || true
+  curl -fsSL -o "$HOME/.local/share/codex-swapper/codex-swapper" "https://raw.githubusercontent.com/$REPO/main/codex-swapper" 2>/dev/null || true
+  curl -fsSL -o "$LOCAL_BIN/codex-swapper" "https://raw.githubusercontent.com/$REPO/main/codex-swapper" 2>/dev/null || true
+  curl -fsSL -o "$HOME/.local/share/codex-swapper/MOD_STATUS.md" "https://raw.githubusercontent.com/$REPO/main/MOD_STATUS.md" 2>/dev/null || true
+  chmod +x "$HOME/.local/share/codex-swapper/launch-tier2.sh" "$HOME/.local/share/codex-swapper/launch-us-proxy.sh" "$HOME/.local/share/codex-swapper/codex-swapper" "$LOCAL_BIN/codex-swapper" 2>/dev/null || true
 fi
 
 # --- US proxy env template ---
@@ -468,8 +477,9 @@ Next steps:
 
   2. Launch the modded desktop app:
        # quit ChatGPT first, then:
+       codex-swapper launch         # works from checkout or curl|bash install
+       # or directly:
        ./launch-tier2.sh            # from a checkout
-       # or
        ~/.local/share/codex-swapper/launch-tier2.sh  # curl|bash install
        # plain CLI (no app):
        codex-mod --help
