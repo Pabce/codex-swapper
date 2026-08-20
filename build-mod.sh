@@ -7,11 +7,13 @@
 # every rebuild: flipping these flags later forces a full recompile, so keep
 # them stable once the first build completes.
 #
-#   CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16  (4 -> 16; better LLVM parallelism on 10 cores)
-#   CARGO_PROFILE_RELEASE_LTO=off           (skip the thin-LTO pass; binary slightly larger)
-#
-# CARGO_INCREMENTAL is intentionally NOT set here: codegen is the long pole and
-# incremental costs disk (this machine is at ~96% full).
+# Tuned for Si-only/latest (2026-08-20):
+#   CARGO_PROFILE_RELEASE_CODEGEN_UNITS=32  (4 -> 32; better LLVM parallelism on 10c)
+#   CARGO_PROFILE_RELEASE_LTO=off           (skip thin-LTO; binary slightly larger)
+#   CARGO_INCREMENTAL=1                     (reuses prior codegen; costs ~20G but sccache helps)
+#   RUSTC_WRAPPER=sccache  (if available)  (caches crate compiles across update-mod cherry-picks)
+#   zld  (if available)    (fast ld64 drop-in; ~25% link time)
+#   CARGO_TARGET_DIR fallback: tries external SSD, then ~/.cache, else default
 #
 # Usage:
 #   build-mod.sh            # release build of codex-cli + code-mode host refresh
@@ -49,7 +51,51 @@ if [ ! -d "$WS" ]; then
   fi
 fi
 
-export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16
+# --- perf: sccache + incremental + zld + target-dir fallback ---
+# sccache and incremental are mutually exclusive (sccache forbids -C incremental).
+# We pick one: sccache (better for update-mod cherry-picks) OR incremental+custom target.
+# zld is independent.
+
+# 1) sccache (if installed): caches crate compiles across builds; disables incremental
+if command -v sccache >/dev/null 2>&1; then
+  export RUSTC_WRAPPER=sccache
+  export SCCACHE_DIR="${SCCACHE_DIR:-$HOME/.cache/sccache}"
+  mkdir -p "$SCCACHE_DIR" 2>/dev/null || true
+  sccache --start-server >/dev/null 2>&1 || true
+  unset CARGO_INCREMENTAL
+  echo "sccache: enabled (cache at $SCCACHE_DIR, incremental OFF)"; sccache --show-stats 2>&1 | grep -E "Cache size|Hit rate" | head -n 2 || true
+  echo "target: default ./target (sccache active; custom CARGO_TARGET_DIR disabled for compatibility)"
+else
+  echo "sccache: not found (brew install sccache for ~30% faster rebuilds)"
+  export CARGO_INCREMENTAL=1
+  echo "incremental: enabled (no sccache)"
+  # 2) CARGO_TARGET_DIR: only when sccache is OFF, keep 20G target off the nearly-full Data volume
+  _try_target_dir() {
+    local cand
+    for cand in "/Volumes/Extreme SSD/codex-target" "$HOME/.cache/codex-swapper/target" ""; do
+      if [ -z "$cand" ]; then
+        echo "using default CARGO_TARGET_DIR (./target)"
+        return 0
+      fi
+      if mkdir -p "$cand" 2>/dev/null && [ -w "$cand" ]; then
+        export CARGO_TARGET_DIR="$cand"
+        echo "using CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
+        return 0
+      fi
+    done
+  }
+  _try_target_dir
+fi
+
+# 3) zld (if installed): fast ld64 drop-in
+if command -v zld >/dev/null 2>&1; then
+  export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-fuse-ld=$(command -v zld)"
+  echo "zld: enabled ($(command -v zld))"
+else
+  echo "zld: not found (brew install michaeleisel/zld/zld for ~25% faster links)"
+fi
+
+export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=32
 export CARGO_PROFILE_RELEASE_LTO=off
 
 cd "$WS"
@@ -60,8 +106,10 @@ if [ "${1:-}" = "check" ]; then
   exit 0
 fi
 
-echo "=== building release (codegen-units=16, lto=off) ==="
+echo "=== building release (codegen-units=32, lto=off, incremental=1, sccache=${RUSTC_WRAPPER:-none}, zld=$(command -v zld >/dev/null 2>&1 && echo yes || echo no), target=${CARGO_TARGET_DIR:-$WS/target}) ==="
 cargo build --release -p codex-cli
-cp "$APP_HOST" "$WS/target/release/codex-code-mode-host"
+# copy host next to the produced binary (honours CARGO_TARGET_DIR)
+_target="${CARGO_TARGET_DIR:-$WS/target}"
+cp "$APP_HOST" "$_target/release/codex-code-mode-host"
 echo "code-mode host refreshed"
 echo "=== DONE ==="
