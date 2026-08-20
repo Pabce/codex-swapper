@@ -1,0 +1,2696 @@
+From 82f043fe35ee29f0079ea4dd47761420024dce89 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
+Date: Wed, 19 Aug 2026 10:12:33 +0200
+Subject: [PATCH 1/7] codex-swapper mod: merged provider catalogs + per-thread
+ provider resolution (0.148.0-alpha.15)
+
+---
+ codex-rs/Cargo.lock                           | 280 +++++++++---------
+ codex-rs/app-server/Cargo.toml                |   2 +-
+ codex-rs/app-server/src/config_manager.rs     |  71 +++++
+ codex-rs/app-server/src/models.rs             | 173 +++++++++++
+ codex-rs/app-server/src/request_processors.rs |   2 +-
+ .../request_processors/catalog_processor.rs   |   5 +-
+ .../request_processors/thread_processor.rs    |   5 +
+ codex-rs/core/src/thread_manager.rs           |  12 +-
+ 8 files changed, 406 insertions(+), 144 deletions(-)
+
+diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
+index 13524e63e..4cb1d3111 100644
+--- a/codex-rs/Cargo.lock
++++ b/codex-rs/Cargo.lock
+@@ -394,7 +394,7 @@ checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
+ 
+ [[package]]
+ name = "app_test_support"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -1870,7 +1870,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-agent-extension"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "codex-core",
+@@ -1882,7 +1882,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-agent-graph-store"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-protocol",
+  "codex-state",
+@@ -1897,7 +1897,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-agent-identity"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -1917,7 +1917,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-analytics"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-app-server-protocol",
+  "codex-git-utils",
+@@ -1938,7 +1938,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-ansi-escape"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "ansi-to-tui",
+  "ratatui",
+@@ -1947,7 +1947,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-api"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "assert_matches",
+@@ -1982,7 +1982,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "app_test_support",
+@@ -2082,7 +2082,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-client"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-app-server",
+  "codex-app-server-protocol",
+@@ -2109,7 +2109,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-daemon"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "codex-app-server-protocol",
+@@ -2130,7 +2130,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-protocol"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "codex-app-server-protocol-noop-macros",
+@@ -2163,11 +2163,11 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-protocol-noop-macros"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ 
+ [[package]]
+ name = "codex-app-server-test-client"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -2189,7 +2189,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-transport"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "axum",
+@@ -2231,7 +2231,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-apply-patch"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "assert_cmd",
+@@ -2251,7 +2251,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-arg0"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "codex-apply-patch",
+@@ -2271,7 +2271,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-async-utils"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "pretty_assertions",
+  "tokio",
+@@ -2280,7 +2280,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-aws-auth"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "aws-config",
+  "aws-credential-types",
+@@ -2295,7 +2295,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-backend-client"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "codex-api",
+@@ -2315,7 +2315,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-backend-openapi-models"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "serde",
+  "serde_json",
+@@ -2324,7 +2324,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-build-info"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-install-context",
+  "pretty_assertions",
+@@ -2336,7 +2336,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-bwrap"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "cc",
+  "libc",
+@@ -2345,7 +2345,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-chatgpt"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -2367,7 +2367,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cli"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "app_test_support",
+@@ -2455,7 +2455,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-client"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-http-client",
+  "eventsource-stream",
+@@ -2468,7 +2468,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cloud-config"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "base64 0.22.1",
+  "chrono",
+@@ -2493,7 +2493,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cloud-tasks"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -2526,7 +2526,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cloud-tasks-client"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -2541,7 +2541,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cloud-tasks-mock-client"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "chrono",
+  "codex-cloud-tasks-client",
+@@ -2550,7 +2550,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-code-mode"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-code-mode-protocol",
+  "codex-http-client",
+@@ -2574,7 +2574,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-code-mode-host"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "axum",
+@@ -2601,7 +2601,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-code-mode-protocol"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-protocol",
+  "glob",
+@@ -2619,7 +2619,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-code-mode-runtime"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-code-mode-protocol",
+  "codex-protocol",
+@@ -2635,11 +2635,11 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-collaboration-mode-templates"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ 
+ [[package]]
+ name = "codex-config"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -2687,7 +2687,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-connectors"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "arc-swap",
+@@ -2709,7 +2709,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-connectors-extension"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-connectors",
+  "codex-core-plugins",
+@@ -2722,7 +2722,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-context-fragments"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-protocol",
+  "codex-utils-string",
+@@ -2730,7 +2730,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-core"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "arc-swap",
+@@ -2861,7 +2861,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-core-api"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-analytics",
+  "codex-app-server-protocol",
+@@ -2884,7 +2884,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-core-plugins"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -2940,7 +2940,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-diagnostics"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "libc",
+  "pretty_assertions",
+@@ -2948,7 +2948,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-exec"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "assert_cmd",
+@@ -2995,7 +2995,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-exec-server"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "arc-swap",
+@@ -3053,7 +3053,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-exec-server-protocol"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-file-system",
+@@ -3068,7 +3068,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-exec-server-test-support"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-exec-server",
+  "codex-http-client",
+@@ -3076,7 +3076,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-execpolicy"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -3094,7 +3094,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-experimental-api-macros"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+@@ -3103,7 +3103,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-extension-api"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-config",
+  "codex-context-fragments",
+@@ -3120,7 +3120,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-extension-items"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-utils-absolute-path",
+  "pretty_assertions",
+@@ -3132,7 +3132,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-external-agent-migration"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "chrono",
+  "codex-analytics",
+@@ -3161,7 +3161,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-features"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-otel",
+  "codex-protocol",
+@@ -3174,7 +3174,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-feedback"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "codex-login",
+@@ -3189,7 +3189,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-file-search"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -3205,7 +3205,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-file-system"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "bytes",
+  "codex-protocol",
+@@ -3217,7 +3217,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-file-watcher"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "notify",
+  "pretty_assertions",
+@@ -3228,7 +3228,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-git-attribution"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-backend-client",
+  "codex-extension-api",
+@@ -3241,7 +3241,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-git-utils"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -3267,7 +3267,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-goal-extension"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -3291,7 +3291,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-guardian"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-core",
+  "codex-extension-api",
+@@ -3300,7 +3300,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-guardian-v2"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "codex-api",
+@@ -3320,7 +3320,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-history"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "codex-protocol",
+@@ -3332,7 +3332,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-home"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-extension-api",
+  "codex-utils-absolute-path",
+@@ -3343,7 +3343,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-hooks"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "async-channel",
+@@ -3368,7 +3368,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-http-client"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "bytes",
+  "codex-utils-cargo-bin",
+@@ -3399,7 +3399,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-image-generation-extension"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-api",
+@@ -3426,7 +3426,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-install-context"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-utils-absolute-path",
+  "codex-utils-home-dir",
+@@ -3439,7 +3439,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-keyring-store"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "keyring",
+  "tracing",
+@@ -3447,7 +3447,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-linux-sandbox"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "clap",
+  "codex-core",
+@@ -3472,7 +3472,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-lmstudio"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-core",
+  "codex-http-client",
+@@ -3486,7 +3486,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-login"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -3529,7 +3529,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-mcp"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "arc-swap",
+@@ -3567,7 +3567,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-mcp-extension"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-config",
+  "codex-connectors",
+@@ -3593,7 +3593,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-mcp-server"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "app_test_support",
+@@ -3632,7 +3632,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-memories-extension"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-core",
+  "codex-extension-api",
+@@ -3653,7 +3653,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-memories-read"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-protocol",
+  "codex-shell-command",
+@@ -3663,7 +3663,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-memories-write"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -3700,7 +3700,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-message-history"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-config",
+  "memchr",
+@@ -3714,7 +3714,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-model-provider"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-agent-identity",
+  "codex-api",
+@@ -3737,7 +3737,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-model-provider-info"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-api",
+  "codex-protocol",
+@@ -3753,7 +3753,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-models-manager"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "chrono",
+  "codex-collaboration-mode-templates",
+@@ -3773,7 +3773,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-network-proxy"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -3811,7 +3811,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-ollama"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "assert_matches",
+  "async-stream",
+@@ -3831,7 +3831,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-otel"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "chrono",
+  "codex-api",
+@@ -3862,7 +3862,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-plugin"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-config",
+  "codex-protocol",
+@@ -3875,7 +3875,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-process-hardening"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "libc",
+  "pretty_assertions",
+@@ -3883,7 +3883,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-prompts"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "codex-context-fragments",
+@@ -3897,7 +3897,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-protocol"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "chardetng",
+@@ -3939,7 +3939,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-queue-extension"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "codex-core",
+@@ -3960,7 +3960,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-response-debug-context"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-api",
+@@ -3971,7 +3971,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-responses-api-proxy"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -3988,7 +3988,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-rmcp-client"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "axum",
+@@ -4032,7 +4032,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-rollout"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -4059,7 +4059,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-rollout-trace"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "codex-code-mode",
+@@ -4075,7 +4075,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-sandboxing"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "codex-network-proxy",
+@@ -4099,7 +4099,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-secrets"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "age",
+  "anyhow",
+@@ -4120,7 +4120,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-shell-command"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -4141,7 +4141,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-shell-escalation"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -4161,7 +4161,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-skills"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-protocol",
+  "codex-shell-command",
+@@ -4178,7 +4178,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-skills-extension"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-analytics",
+  "codex-config",
+@@ -4214,7 +4214,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-state"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -4238,7 +4238,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-stdio-to-uds"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "codex-uds",
+@@ -4250,7 +4250,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-terminal-detection"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "pretty_assertions",
+  "tracing",
+@@ -4258,7 +4258,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-test-binary-support"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-arg0",
+  "tempfile",
+@@ -4266,7 +4266,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-thread-manager-sample"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -4277,7 +4277,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-thread-store"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "chrono",
+  "codex-app-server-protocol",
+@@ -4307,7 +4307,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-tools"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "bitflags 2.13.1",
+  "codex-code-mode",
+@@ -4333,7 +4333,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-tui"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "app_test_support",
+@@ -4446,7 +4446,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-uds"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "async-io",
+  "pretty_assertions",
+@@ -4458,7 +4458,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-absolute-path"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "dirs",
+  "dunce",
+@@ -4472,14 +4472,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-approval-presets"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-protocol",
+ ]
+ 
+ [[package]]
+ name = "codex-utils-audio"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-protocol",
+@@ -4493,7 +4493,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-cache"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "lru",
+  "sha1 0.10.6",
+@@ -4502,7 +4502,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-cargo-bin"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "assert_cmd",
+  "runfiles",
+@@ -4511,7 +4511,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-cli"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "clap",
+  "codex-protocol",
+@@ -4523,15 +4523,15 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-elapsed"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ 
+ [[package]]
+ name = "codex-utils-fuzzy-match"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ 
+ [[package]]
+ name = "codex-utils-home-dir"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-utils-absolute-path",
+  "dirs",
+@@ -4541,7 +4541,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-image"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-utils-cache",
+@@ -4554,7 +4554,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-json-to-toml"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "pretty_assertions",
+  "serde_json",
+@@ -4563,7 +4563,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-oss"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-core",
+  "codex-lmstudio",
+@@ -4573,7 +4573,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-output-truncation"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-protocol",
+  "codex-utils-string",
+@@ -4582,7 +4582,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-path"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-utils-absolute-path",
+  "dunce",
+@@ -4592,7 +4592,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-path-uri"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-utils-absolute-path",
+@@ -4608,7 +4608,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-plugins"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-exec-server",
+  "codex-exec-server-protocol",
+@@ -4622,7 +4622,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-pty"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "filedescriptor",
+@@ -4638,7 +4638,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-readiness"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "assert_matches",
+  "thiserror 2.0.18",
+@@ -4648,14 +4648,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-rustls-provider"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "rustls",
+ ]
+ 
+ [[package]]
+ name = "codex-utils-sandbox-summary"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-protocol",
+  "codex-utils-absolute-path",
+@@ -4664,7 +4664,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-sleep-inhibitor"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "core-foundation 0.9.4",
+  "libc",
+@@ -4674,14 +4674,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-stream-parser"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "pretty_assertions",
+ ]
+ 
+ [[package]]
+ name = "codex-utils-string"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "pretty_assertions",
+  "regex-lite",
+@@ -4691,14 +4691,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-template"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "pretty_assertions",
+ ]
+ 
+ [[package]]
+ name = "codex-v8-poc"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "pretty_assertions",
+  "v8",
+@@ -4706,7 +4706,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-web-search-extension"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-api",
+  "codex-core",
+@@ -4727,7 +4727,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-websocket-client"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-http-client",
+  "codex-utils-rustls-provider",
+@@ -4743,7 +4743,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-windows-sandbox"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -4769,7 +4769,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-workload-identity"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "codex-http-client",
+  "pretty_assertions",
+@@ -5009,7 +5009,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "core_test_support"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "assert_cmd",
+@@ -9236,7 +9236,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "mcp_test_support"
+-version = "0.0.0"
++version = "0.148.0-alpha.15"
+ dependencies = [
+  "anyhow",
+  "codex-login",
+diff --git a/codex-rs/app-server/Cargo.toml b/codex-rs/app-server/Cargo.toml
+index 32ad4ea90..7ce47f7da 100644
+--- a/codex-rs/app-server/Cargo.toml
++++ b/codex-rs/app-server/Cargo.toml
+@@ -73,6 +73,7 @@ codex-memories-write = { workspace = true }
+ codex-mcp = { workspace = true }
+ codex-mcp-extension = { workspace = true }
+ codex-model-provider = { workspace = true }
++codex-model-provider-info = { workspace = true }
+ codex-models-manager = { workspace = true }
+ codex-protocol = { workspace = true }
+ codex-queue-extension = { workspace = true }
+@@ -123,7 +124,6 @@ axum = { workspace = true, default-features = false, features = [
+     "tokio",
+ ] }
+ base64 = { workspace = true }
+-codex-model-provider-info = { workspace = true }
+ codex-utils-cargo-bin = { workspace = true }
+ core_test_support = { workspace = true }
+ flate2 = { workspace = true }
+diff --git a/codex-rs/app-server/src/config_manager.rs b/codex-rs/app-server/src/config_manager.rs
+index 812e84380..6e223080f 100644
+--- a/codex-rs/app-server/src/config_manager.rs
++++ b/codex-rs/app-server/src/config_manager.rs
+@@ -239,6 +239,11 @@ impl ConfigManager {
+                 )
+             })?);
+         }
++        maybe_inject_provider_catalog(
++            self.codex_home(),
++            typesafe_overrides.model_provider.as_deref(),
++            &mut request_overrides,
++        );
+         let merged_cli_overrides = cli_overrides
+             .iter()
+             .cloned()
+@@ -377,3 +382,69 @@ pub(crate) fn apply_runtime_feature_enablement(
+         }
+     }
+ }
++
++/// Custom providers configured with a convention-based static catalog
++/// (`<codex_home>/model-catalogs/<provider-id>.json`) would otherwise be
++/// treated as remote-catalog providers, which fails against backends that do
++/// not speak the Codex model-catalog schema. Inject the catalog path into the
++/// per-thread request overrides when the resolved provider has one on disk.
++fn maybe_inject_provider_catalog(
++    codex_home: &Path,
++    model_provider: Option<&str>,
++    request_overrides: &mut HashMap<String, serde_json::Value>,
++) {
++    let Some(provider_id) = model_provider else {
++        return;
++    };
++    if provider_id == "openai" {
++        return;
++    }
++    let catalog_path = codex_home
++        .join("model-catalogs")
++        .join(format!("{provider_id}.json"));
++    if catalog_path.exists() {
++        request_overrides
++            .entry("model_catalog_json".to_string())
++            .or_insert_with(|| serde_json::json!(catalog_path.display().to_string()));
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use std::fs;
++    use tempfile::tempdir;
++
++    #[test]
++    fn injects_catalog_for_custom_provider_with_convention_file() {
++        let dir = tempdir().unwrap();
++        let models_dir = dir.path().join("model-catalogs");
++        fs::create_dir_all(&models_dir).unwrap();
++        fs::write(models_dir.join("opencode-go.json"), "{}").unwrap();
++
++        let mut overrides = HashMap::new();
++        maybe_inject_provider_catalog(dir.path(), Some("opencode-go"), &mut overrides);
++
++        assert_eq!(
++            overrides.get("model_catalog_json"),
++            Some(&serde_json::json!(
++                models_dir.join("opencode-go.json").display().to_string()
++            ))
++        );
++    }
++
++    #[test]
++    fn skips_openai_and_missing_catalog_and_none() {
++        let dir = tempdir().unwrap();
++
++        let mut overrides = HashMap::new();
++        maybe_inject_provider_catalog(dir.path(), Some("openai"), &mut overrides);
++        assert!(overrides.is_empty());
++
++        maybe_inject_provider_catalog(dir.path(), Some("opencode-go"), &mut overrides);
++        assert!(overrides.is_empty());
++
++        maybe_inject_provider_catalog(dir.path(), None, &mut overrides);
++        assert!(overrides.is_empty());
++    }
++}
+diff --git a/codex-rs/app-server/src/models.rs b/codex-rs/app-server/src/models.rs
+index 1063e64c3..85cd71566 100644
+--- a/codex-rs/app-server/src/models.rs
++++ b/codex-rs/app-server/src/models.rs
+@@ -4,11 +4,15 @@ use codex_app_server_protocol::Model;
+ use codex_app_server_protocol::ModelServiceTier;
+ use codex_app_server_protocol::ModelUpgradeInfo;
+ use codex_app_server_protocol::ReasoningEffortOption;
++use codex_core::config::Config;
+ use codex_core::ThreadManager;
+ use codex_http_client::HttpClientFactory;
+ use codex_models_manager::manager::RefreshStrategy;
++use codex_model_provider_info::ModelProviderInfo;
+ use codex_protocol::openai_models::ModelPreset;
+ use codex_protocol::openai_models::ReasoningEffortPreset;
++use codex_protocol::openai_models::ModelsResponse;
++use std::collections::HashMap;
+ 
+ pub async fn supported_models(
+     thread_manager: Arc<ThreadManager>,
+@@ -24,6 +28,85 @@ pub async fn supported_models(
+         .collect()
+ }
+ 
++/// Path used for convention-based per-provider static catalogs:
++/// `<codex_home>/model-catalogs/<provider-id>.json`.
++fn provider_catalog_path(codex_home: &std::path::Path, provider_id: &str) -> std::path::PathBuf {
++    codex_home.join("model-catalogs").join(format!("{provider_id}.json"))
++}
++
++/// Load a convention-based static catalog for a registered custom provider.
++///
++/// Returns `None` when the file is missing or does not parse as a model
++/// catalog, so unrelated built-in providers are silently skipped.
++fn load_provider_catalog(
++    codex_home: &std::path::Path,
++    provider_id: &str,
++) -> Option<ModelsResponse> {
++    let path = provider_catalog_path(codex_home, provider_id);
++    let contents = std::fs::read_to_string(path).ok()?;
++    serde_json::from_str::<ModelsResponse>(&contents).ok()
++}
++
++/// Return the id of a registered non-active custom provider whose
++/// convention-based static catalog contains `model`.
++pub(crate) fn resolve_model_provider(config: &Config, model: &str) -> Option<String> {
++    resolve_model_provider_in_catalogs(
++        &config.model_providers,
++        &config.model_provider_id,
++        config.codex_home.as_path(),
++        model,
++    )
++}
++
++fn resolve_model_provider_in_catalogs(
++    model_providers: &HashMap<String, ModelProviderInfo>,
++    active_provider_id: &str,
++    codex_home: &std::path::Path,
++    model: &str,
++) -> Option<String> {
++    for provider_id in model_providers.keys() {
++        if provider_id == active_provider_id || provider_id == "openai" {
++            continue;
++        }
++        if let Some(catalog) = load_provider_catalog(codex_home, provider_id.as_str()) {
++            if catalog.models.iter().any(|info| info.slug == model) {
++                return Some(provider_id.clone());
++            }
++        }
++    }
++    None
++}
++
++/// Merge the active provider's models with the convention-based static
++/// catalogs of any registered custom providers.
++pub async fn merged_supported_models(
++    config: &Config,
++    thread_manager: Arc<ThreadManager>,
++    include_hidden: bool,
++    http_client_factory: HttpClientFactory,
++) -> Vec<Model> {
++    let mut models = supported_models(thread_manager, include_hidden, http_client_factory).await;
++
++    for provider_id in config.model_providers.keys() {
++        if provider_id == &config.model_provider_id || provider_id == "openai" {
++            continue;
++        }
++        let Some(catalog) =
++            load_provider_catalog(config.codex_home.as_path(), provider_id.as_str())
++        else {
++            continue;
++        };
++        for info in catalog.models {
++            let preset = ModelPreset::from(info);
++            if include_hidden || preset.show_in_picker {
++                models.push(model_from_preset(preset));
++            }
++        }
++    }
++
++    models
++}
++
+ fn model_from_preset(preset: ModelPreset) -> Model {
+     Model {
+         id: preset.id.to_string(),
+@@ -77,3 +160,93 @@ fn reasoning_efforts_from_preset(
+         })
+         .collect()
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use std::fs;
++    use tempfile::tempdir;
++
++    fn write_catalog(dir: &std::path::Path, provider_id: &str, slug: &str) {
++        let models_dir = dir.join("model-catalogs");
++        fs::create_dir_all(&models_dir).unwrap();
++        let path = models_dir.join(format!("{provider_id}.json"));
++        let catalog = serde_json::json!({
++            "models": [{
++                "slug": slug,
++                "display_name": slug,
++                "base_instructions": "You are a helpful assistant.",
++                "supported_reasoning_levels": [
++                    { "effort": "low", "description": "low" },
++                    { "effort": "high", "description": "high" }
++                ],
++                "shell_type": "shell_command",
++                "visibility": "list",
++                "supported_in_api": true,
++                "priority": 1,
++                "support_verbosity": true,
++                "truncation_policy": { "mode": "tokens", "limit": 10000 },
++                "experimental_supported_tools": []
++            }]
++        });
++        fs::write(path, serde_json::to_vec(&catalog).unwrap()).unwrap();
++    }
++
++    #[test]
++    fn provider_catalog_path_uses_codex_home_model_catalogs() {
++        let dir = tempdir().unwrap();
++        let path = provider_catalog_path(dir.path(), "opencode-go");
++        assert!(path.ends_with("model-catalogs/opencode-go.json"));
++    }
++
++    #[test]
++    fn load_provider_catalog_reads_static_catalog() {
++        let dir = tempdir().unwrap();
++        write_catalog(dir.path(), "opencode-go", "deepseek-v4-flash");
++        let catalog = load_provider_catalog(dir.path(), "opencode-go").unwrap();
++        assert_eq!(catalog.models.len(), 1);
++        assert_eq!(catalog.models[0].slug, "deepseek-v4-flash");
++    }
++
++    #[test]
++    fn resolve_model_provider_maps_custom_provider_slug() {
++        let dir = tempdir().unwrap();
++        write_catalog(dir.path(), "opencode-go", "deepseek-v4-flash");
++
++        let mut providers = HashMap::new();
++        providers.insert("openai".to_string(), ModelProviderInfo::default());
++        providers.insert("opencode-go".to_string(), ModelProviderInfo::default());
++
++        let resolved = resolve_model_provider_in_catalogs(
++            &providers,
++            "openai",
++            dir.path(),
++            "deepseek-v4-flash",
++        );
++        assert_eq!(resolved.as_deref(), Some("opencode-go"));
++    }
++
++    #[test]
++    fn resolve_model_provider_skips_active_openai_and_unknown() {
++        let dir = tempdir().unwrap();
++        write_catalog(dir.path(), "opencode-go", "deepseek-v4-flash");
++
++        let mut providers = HashMap::new();
++        providers.insert("openai".to_string(), ModelProviderInfo::default());
++        providers.insert("opencode-go".to_string(), ModelProviderInfo::default());
++
++        assert_eq!(
++            resolve_model_provider_in_catalogs(
++                &providers,
++                "opencode-go",
++                dir.path(),
++                "deepseek-v4-flash"
++            ),
++            None
++        );
++        assert_eq!(
++            resolve_model_provider_in_catalogs(&providers, "openai", dir.path(), "gpt-5.6-sol"),
++            None
++        );
++    }
++}
+diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
+index 616225839..2525ae328 100644
+--- a/codex-rs/app-server/src/request_processors.rs
++++ b/codex-rs/app-server/src/request_processors.rs
+@@ -4,7 +4,7 @@ use crate::command_exec::StartCommandExecParams;
+ use crate::config_manager::ConfigManager;
+ use crate::error_code::INPUT_TOO_LARGE_ERROR_CODE;
+ use crate::error_code::invalid_params;
+-use crate::models::supported_models;
++use crate::models::merged_supported_models;
+ use crate::outgoing_message::ConnectionId;
+ use crate::outgoing_message::ConnectionRequestId;
+ use crate::outgoing_message::OutgoingMessageSender;
+diff --git a/codex-rs/app-server/src/request_processors/catalog_processor.rs b/codex-rs/app-server/src/request_processors/catalog_processor.rs
+index d56df03f5..174cd3100 100644
+--- a/codex-rs/app-server/src/request_processors/catalog_processor.rs
++++ b/codex-rs/app-server/src/request_processors/catalog_processor.rs
+@@ -162,6 +162,7 @@ impl CatalogRequestProcessor {
+         params: ModelListParams,
+     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+         Self::list_models(
++            self.config.clone(),
+             self.thread_manager.clone(),
+             self.config.http_client_factory(),
+             params,
+@@ -254,6 +255,7 @@ impl CatalogRequestProcessor {
+     }
+ 
+     async fn list_models(
++        config: Arc<Config>,
+         thread_manager: Arc<ThreadManager>,
+         http_client_factory: codex_http_client::HttpClientFactory,
+         params: ModelListParams,
+@@ -263,7 +265,8 @@ impl CatalogRequestProcessor {
+             cursor,
+             include_hidden,
+         } = params;
+-        let models = supported_models(
++        let models = merged_supported_models(
++            config.as_ref(),
+             thread_manager,
+             include_hidden.unwrap_or(false),
+             http_client_factory,
+diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
+index 4bb5e435f..54fc4f41c 100644
+--- a/codex-rs/app-server/src/request_processors/thread_processor.rs
++++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
+@@ -1512,6 +1512,11 @@ impl ThreadRequestProcessor {
+         developer_instructions: Option<String>,
+         personality: Option<Personality>,
+     ) -> ConfigOverrides {
++        let model_provider = model_provider.or_else(|| {
++            model
++                .as_deref()
++                .and_then(|model| crate::models::resolve_model_provider(self.config.as_ref(), model))
++        });
+         ConfigOverrides {
+             model,
+             model_provider,
+diff --git a/codex-rs/core/src/thread_manager.rs b/codex-rs/core/src/thread_manager.rs
+index 42b14e340..b5d6d8f07 100644
+--- a/codex-rs/core/src/thread_manager.rs
++++ b/codex-rs/core/src/thread_manager.rs
+@@ -332,6 +332,9 @@ pub(crate) struct ThreadManagerState {
+     thread_created_tx: broadcast::Sender<ThreadId>,
+     thread_id_generator: ThreadIdGenerator,
+     auth_manager: Arc<AuthManager>,
++    /// Provider id used to build the shared models manager at startup. A thread
++    /// that resolves to a different provider builds its own per-thread manager.
++    model_provider_id: String,
+     models_manager: SharedModelsManager,
+     environment_manager: Arc<EnvironmentManager>,
+     starting_mcp_runtimes: std::sync::Mutex<Vec<std::sync::Weak<AtomicBool>>>,
+@@ -459,6 +462,7 @@ impl ThreadManager {
+                 threads: Arc::new(RwLock::new(HashMap::new())),
+                 thread_created_tx,
+                 thread_id_generator: default_thread_id_generator(),
++                model_provider_id: config.model_provider_id.clone(),
+                 models_manager,
+                 environment_manager,
+                 starting_mcp_runtimes: std::sync::Mutex::new(Vec::new()),
+@@ -605,6 +609,7 @@ impl ThreadManager {
+                 threads: Arc::new(RwLock::new(HashMap::new())),
+                 thread_created_tx,
+                 thread_id_generator: default_thread_id_generator(),
++                model_provider_id: OPENAI_PROVIDER_ID.to_string(),
+                 models_manager: create_model_provider(provider, Some(auth_manager.clone()))
+                     .models_manager(codex_home, /*config_model_catalog*/ None),
+                 environment_manager,
+@@ -1803,13 +1808,18 @@ impl ThreadManagerState {
+             starting.retain(|runtime| runtime.strong_count() != 0);
+             starting.push(Arc::downgrade(&source_changed_during_startup));
+         }
++        let models_manager = if config.model_provider_id == self.model_provider_id {
++            Arc::clone(&self.models_manager)
++        } else {
++            build_models_manager(&config, auth_manager.clone())
++        };
+         let (session, io) = Box::pin(Session::spawn(SessionSpawnArgs {
+             config,
+             allow_provider_model_fallback,
+             user_instructions,
+             installation_id: self.installation_id.clone(),
+             auth_manager,
+-            models_manager: Arc::clone(&self.models_manager),
++            models_manager,
+             environment_manager: Arc::clone(&self.environment_manager),
+             skills_service: Arc::clone(&self.skills_service),
+             plugins_manager: Arc::clone(&self.plugins_manager),
+-- 
+2.54.0
+
+
+From ae73264073b70f506c96410f133a82c3b1155ca1 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
+Date: Wed, 19 Aug 2026 11:43:47 +0200
+Subject: [PATCH 2/7] codex-swapper mod: disambiguate colliding provider model
+ ids in the picker
+
+The desktop picker keys selection on the model slug, so two catalog entries
+with the same slug (e.g. OpenAI's gpt-5.6-luna and opencode-go's
+gpt-5.6-luna) both rendered as selected. Emit custom-provider entries that
+collide with an already-claimed slug under a provider-namespaced id
+(<provider-id>/<slug>) in model/list, resolve that form back to the provider
+in thread config overrides, and strip the namespace from the wire model name
+in the models manager so the backend still receives the bare slug.
+---
+ codex-rs/app-server/src/models.rs            | 193 ++++++++++++++++++-
+ codex-rs/models-manager/src/manager.rs       |  19 +-
+ codex-rs/models-manager/src/manager_tests.rs |   6 +-
+ 3 files changed, 207 insertions(+), 11 deletions(-)
+
+diff --git a/codex-rs/app-server/src/models.rs b/codex-rs/app-server/src/models.rs
+index 85cd71566..012da390f 100644
+--- a/codex-rs/app-server/src/models.rs
++++ b/codex-rs/app-server/src/models.rs
+@@ -13,6 +13,7 @@ use codex_protocol::openai_models::ModelPreset;
+ use codex_protocol::openai_models::ReasoningEffortPreset;
+ use codex_protocol::openai_models::ModelsResponse;
+ use std::collections::HashMap;
++use std::collections::HashSet;
+ 
+ pub async fn supported_models(
+     thread_manager: Arc<ThreadManager>,
+@@ -64,6 +65,22 @@ fn resolve_model_provider_in_catalogs(
+     codex_home: &std::path::Path,
+     model: &str,
+ ) -> Option<String> {
++    // Explicit provider-namespaced model (`<provider-id>/<slug>`). The picker
++    // uses this form to disambiguate colliding slugs across providers, so
++    // resolve it directly against the named provider's catalog.
++    if let Some((namespace, suffix)) = model.split_once('/') {
++        if !suffix.contains('/')
++            && is_valid_provider_namespace(namespace)
++            && namespace != active_provider_id
++            && namespace != "openai"
++            && model_providers.contains_key(namespace)
++            && load_provider_catalog(codex_home, namespace)
++                .is_some_and(|catalog| catalog.models.iter().any(|info| info.slug == suffix))
++        {
++            return Some(namespace.to_string());
++        }
++    }
++
+     for provider_id in model_providers.keys() {
+         if provider_id == active_provider_id || provider_id == "openai" {
+             continue;
+@@ -77,6 +94,15 @@ fn resolve_model_provider_in_catalogs(
+     None
+ }
+ 
++/// A namespace segment is valid when it looks like a simple provider id, so
++/// arbitrary aliases are not accidentally treated as provider namespaces.
++fn is_valid_provider_namespace(namespace: &str) -> bool {
++    !namespace.is_empty()
++        && namespace
++            .chars()
++            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
++}
++
+ /// Merge the active provider's models with the convention-based static
+ /// catalogs of any registered custom providers.
+ pub async fn merged_supported_models(
+@@ -87,18 +113,46 @@ pub async fn merged_supported_models(
+ ) -> Vec<Model> {
+     let mut models = supported_models(thread_manager, include_hidden, http_client_factory).await;
+ 
+-    for provider_id in config.model_providers.keys() {
+-        if provider_id == &config.model_provider_id || provider_id == "openai" {
+-            continue;
+-        }
++    // Slugs already claimed by the active provider's picker list. A custom
++    // provider model whose slug collides must be exposed under a
++    // provider-namespaced slug: the client-side picker keys selection on the
++    // `model` field, so duplicate bare slugs make every colliding row appear
++    // selected at the same time.
++    let mut claimed: HashSet<String> = models
++        .iter()
++        .filter(|model| include_hidden || !model.hidden)
++        .map(|model| model.model.clone())
++        .collect();
++
++    // Iterate in sorted order so which provider wins the bare slug (and which
++    // entries get namespaced) is deterministic across restarts.
++    let mut provider_ids: Vec<&String> = config
++        .model_providers
++        .keys()
++        .filter(|provider_id| {
++            *provider_id != &config.model_provider_id && provider_id.as_str() != "openai"
++        })
++        .collect();
++    provider_ids.sort();
++
++    for provider_id in provider_ids {
+         let Some(catalog) =
+-            load_provider_catalog(config.codex_home.as_path(), provider_id.as_str())
++            load_provider_catalog(config.codex_home.as_path(), provider_id)
+         else {
+             continue;
+         };
++        let provider_name = config
++            .model_providers
++            .get(provider_id.as_str())
++            .map(|info| info.name.as_str())
++            .unwrap_or(provider_id.as_str());
+         for info in catalog.models {
+-            let preset = ModelPreset::from(info);
++            let mut preset = ModelPreset::from(info);
+             if include_hidden || preset.show_in_picker {
++                if claimed.contains(&preset.model) {
++                    namespace_colliding_preset(&mut preset, provider_id, provider_name);
++                }
++                claimed.insert(preset.model.clone());
+                 models.push(model_from_preset(preset));
+             }
+         }
+@@ -107,6 +161,23 @@ pub async fn merged_supported_models(
+     models
+ }
+ 
++/// Rewrite a catalog preset whose slug collides with one already claimed by
++/// another provider into the provider-namespaced form
++/// (`<provider-id>/<slug>`), and annotate its display name so the two rows are
++/// distinguishable in the picker.
++fn namespace_colliding_preset(
++    preset: &mut ModelPreset,
++    provider_id: &str,
++    provider_name: &str,
++) {
++    let namespaced = format!("{provider_id}/{}", preset.model);
++    preset.id = namespaced.clone();
++    preset.model = namespaced;
++    if !preset.display_name.trim().is_empty() {
++        preset.display_name = format!("{} · {provider_name}", preset.display_name);
++    }
++}
++
+ fn model_from_preset(preset: ModelPreset) -> Model {
+     Model {
+         id: preset.id.to_string(),
+@@ -185,6 +256,7 @@ mod tests {
+                 "supported_in_api": true,
+                 "priority": 1,
+                 "support_verbosity": true,
++                "supports_parallel_tool_calls": true,
+                 "truncation_policy": { "mode": "tokens", "limit": 10000 },
+                 "experimental_supported_tools": []
+             }]
+@@ -249,4 +321,113 @@ mod tests {
+             None
+         );
+     }
++
++    #[test]
++    fn namespace_colliding_preset_rewrites_slug_and_display_name() {
++        let mut preset = ModelPreset {
++            id: "gpt-5.6-luna".to_string(),
++            model: "gpt-5.6-luna".to_string(),
++            display_name: "GPT 5.6 Luna".to_string(),
++            description: String::new(),
++            model_specialty: None,
++            default_reasoning_effort: codex_protocol::openai_models::ReasoningEffort::None,
++            supported_reasoning_efforts: Vec::new(),
++            supports_personality: false,
++            additional_speed_tiers: Vec::new(),
++            service_tiers: Vec::new(),
++            default_service_tier: None,
++            is_default: false,
++            upgrade: None,
++            show_in_picker: true,
++            multi_agent_version: None,
++            availability_nux: None,
++            supported_in_api: true,
++            input_modalities: Vec::new(),
++        };
++
++        namespace_colliding_preset(&mut preset, "opencode-go", "OpenCode Go");
++
++        assert_eq!(preset.id, "opencode-go/gpt-5.6-luna");
++        assert_eq!(preset.model, "opencode-go/gpt-5.6-luna");
++        assert_eq!(preset.display_name, "GPT 5.6 Luna · OpenCode Go");
++    }
++
++    #[test]
++    fn resolve_model_provider_resolves_namespaced_colliding_model() {
++        let dir = tempdir().unwrap();
++        write_catalog(dir.path(), "opencode-go", "gpt-5.6-luna");
++
++        let mut providers = HashMap::new();
++        providers.insert("openai".to_string(), ModelProviderInfo::default());
++        providers.insert("opencode-go".to_string(), ModelProviderInfo::default());
++
++        let resolved = resolve_model_provider_in_catalogs(
++            &providers,
++            "openai",
++            dir.path(),
++            "opencode-go/gpt-5.6-luna",
++        );
++        assert_eq!(resolved.as_deref(), Some("opencode-go"));
++    }
++
++    #[test]
++    fn resolve_model_provider_rejects_invalid_namespaces_and_unknown_suffixes() {
++        let dir = tempdir().unwrap();
++        write_catalog(dir.path(), "opencode-go", "gpt-5.6-luna");
++
++        let mut providers = HashMap::new();
++        providers.insert("openai".to_string(), ModelProviderInfo::default());
++        providers.insert("opencode-go".to_string(), ModelProviderInfo::default());
++
++        // Unknown provider namespace.
++        assert_eq!(
++            resolve_model_provider_in_catalogs(
++                &providers,
++                "openai",
++                dir.path(),
++                "some-provider/gpt-5.6-luna"
++            ),
++            None
++        );
++        // Registered namespace but slug missing from its catalog.
++        assert_eq!(
++            resolve_model_provider_in_catalogs(
++                &providers,
++                "openai",
++                dir.path(),
++                "opencode-go/not-in-catalog"
++            ),
++            None
++        );
++        // Multi-segment namespace is not a valid provider prefix.
++        assert_eq!(
++            resolve_model_provider_in_catalogs(
++                &providers,
++                "openai",
++                dir.path(),
++                "ns1/ns2/gpt-5.6-luna"
++            ),
++            None
++        );
++        // Namespace of the active provider is not treated as a custom prefix.
++        assert_eq!(
++            resolve_model_provider_in_catalogs(
++                &providers,
++                "openai",
++                dir.path(),
++                "openai/gpt-5.6-luna"
++            ),
++            None
++        );
++        // Unprefixed slug still resolves via catalog search.
++        assert_eq!(
++            resolve_model_provider_in_catalogs(
++                &providers,
++                "openai",
++                dir.path(),
++                "gpt-5.6-luna"
++            ),
++            Some("opencode-go".to_string())
++        );
++    }
+ }
+diff --git a/codex-rs/models-manager/src/manager.rs b/codex-rs/models-manager/src/manager.rs
+index 45835c37c..93b6a52b0 100644
+--- a/codex-rs/models-manager/src/manager.rs
++++ b/codex-rs/models-manager/src/manager.rs
+@@ -658,11 +658,24 @@ pub(crate) fn construct_model_info_from_candidates(
+ ) -> ModelInfo {
+     // First use the normal longest-prefix match. If that misses, allow a narrowly scoped
+     // retry for namespaced slugs like `custom/gpt-5.3-codex`.
+-    let remote = find_model_by_longest_prefix(model, candidates)
+-        .or_else(|| find_model_by_namespaced_suffix(model, candidates));
++    let namespaced_match = find_model_by_namespaced_suffix(model, candidates);
++    let remote =
++        find_model_by_longest_prefix(model, candidates).or_else(|| namespaced_match.clone());
+     let model_info = if let Some(remote) = remote {
++        // When the metadata match came from the namespaced lookup, hand the
++        // backend the bare suffix: the `provider/slug` prefix is a picker-level
++        // disambiguation for colliding model ids, not part of the wire model
++        // name the provider expects.
++        let slug = if namespaced_match.is_some() {
++            model
++                .split_once('/')
++                .map(|(_, suffix)| suffix.to_string())
++                .unwrap_or_else(|| model.to_string())
++        } else {
++            model.to_string()
++        };
+         ModelInfo {
+-            slug: model.to_string(),
++            slug,
+             used_fallback_model_metadata: false,
+             ..remote
+         }
+diff --git a/codex-rs/models-manager/src/manager_tests.rs b/codex-rs/models-manager/src/manager_tests.rs
+index 0768d1e4c..3ba24a1e6 100644
+--- a/codex-rs/models-manager/src/manager_tests.rs
++++ b/codex-rs/models-manager/src/manager_tests.rs
+@@ -762,7 +762,9 @@ async fn get_model_info_matches_namespaced_suffix() {
+ 
+     let model_info = manager.get_model_info(&namespaced_model, &config).await;
+ 
+-    assert_eq!(model_info.slug, namespaced_model);
++    // Namespaced slugs carry the bare suffix on the wire (the namespace is a
++    // picker-level disambiguation, not part of the backend model id).
++    assert_eq!(model_info.slug, "gpt-image");
+     assert!(model_info.supports_image_detail_original);
+     assert!(!model_info.used_fallback_model_metadata);
+ }
+@@ -778,7 +780,7 @@ async fn get_model_info_matches_hyphenated_provider_namespace_suffix() {
+ 
+     let model_info = manager.get_model_info(&namespaced_model, &config).await;
+ 
+-    assert_eq!(model_info.slug, namespaced_model);
++    assert_eq!(model_info.slug, "gpt-image");
+     assert!(!model_info.used_fallback_model_metadata);
+ }
+ 
+-- 
+2.54.0
+
+
+From 647bbf0a26fd9f026a3736fa123883b382b6695e Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
+Date: Wed, 19 Aug 2026 15:36:34 +0200
+Subject: [PATCH 3/7] codex-swapper mod: OpenCode Go key failover on usage
+ exhaustion
+
+When the opencode-go gateway rejects a request with 401/402/403/429, rotate
+the preferred key in $CODEX_HOME/oc-go.key (1 <-> 2), refresh the external
+auth command, and retry exactly once. The provider is matched by its base
+URL so no other provider path is touched, and a user pin in
+$CODEX_HOME/oc-go.override disables rotation.
+
+The key value itself is resolved by ~/.codex/bin/oc-go-key, which reads the
+state file and prints the matching Keychain secret (opencode-go /
+opencode-go-alt), falling back to the other key when the selected item is
+missing or empty.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ codex-rs/core/src/client.rs       | 87 +++++++++++++++++++++++++++++++
+ codex-rs/core/src/client_tests.rs | 62 ++++++++++++++++++++++
+ 2 files changed, 149 insertions(+)
+
+diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
+index da3b6dad3..e920fdf98 100644
+--- a/codex-rs/core/src/client.rs
++++ b/codex-rs/core/src/client.rs
+@@ -194,6 +194,42 @@ fn session_telemetry_for_request(
+     )
+ }
+ 
++/// Returns `true` when the resolved provider is the OpenCode Go gateway.
++///
++/// The gateway is identified by its base URL so the failover applies only to
++/// this provider and never touches the OpenAI or other provider paths.
++fn provider_is_opencode_go(provider: &SharedModelProvider) -> bool {
++    provider
++        .info()
++        .base_url
++        .as_deref()
++        .is_some_and(|url| url.trim_end_matches('/') == "https://opencode.ai/zen/go/v1")
++}
++
++/// Rotates the preferred OpenCode Go key between `1` and `2` in `home`.
++///
++/// The active key lives in `<home>/oc-go.key` (default `1`) so the harness and
++/// the auth dispatcher script (`~/.codex/bin/oc-go-key`) stay in agreement.
++/// When `<home>/oc-go.override` exists the key is user-pinned and rotation is
++/// skipped (the pinned key always wins on the dispatcher side).
++fn rotate_opencode_go_key_state(home: &std::path::Path) -> std::io::Result<()> {
++    if home.join("oc-go.override").is_file() {
++        return Ok(());
++    }
++    let key_path = home.join("oc-go.key");
++    let current = std::fs::read_to_string(&key_path)
++        .ok()
++        .and_then(|contents| contents.trim().parse::<u8>().ok())
++        .unwrap_or(1);
++    let next = if current == 1 { 2 } else { 1 };
++    std::fs::write(&key_path, format!("{next}\n"))?;
++    Ok(())
++}
++
++fn flip_opencode_go_key() -> std::io::Result<()> {
++    rotate_opencode_go_key_state(&codex_utils_home_dir::find_codex_home()?)
++}
++
+ /// Session-scoped state shared by all [`ModelClient`] clones.
+ ///
+ /// This is intentionally kept minimal so `ModelClient` does not need to hold a full `Config`. Most
+@@ -1452,6 +1488,13 @@ impl ModelClientSession {
+             .as_ref()
+             .map(AuthManager::unauthorized_recovery);
+         let mut pending_retry = PendingUnauthorizedRetry::default();
++        // codex-swapper mod: OpenCode Go key failover. On a usage/auth error
++        // (401/402/403/429) from the opencode-go gateway we rotate the
++        // preferred key (1 <-> 2), refresh the external auth command, and retry
++        // exactly once. A user pin in `$CODEX_HOME/oc-go.override` disables the
++        // rotation.
++        let provider_is_opencode_go = provider_is_opencode_go(&self.client.state.provider);
++        let mut key_rotated = false;
+         loop {
+             let client_setup = self.client.current_client_setup().await?;
+             let transport = self
+@@ -1520,6 +1563,50 @@ impl ModelClientSession {
+                     );
+                     return Ok(stream);
+                 }
++                Err(ApiError::Transport(
++                    usage_transport @ TransportError::Http { status, .. },
++                )) if provider_is_opencode_go
++                    && !key_rotated
++                    && matches!(
++                        status,
++                        StatusCode::UNAUTHORIZED
++                            | StatusCode::PAYMENT_REQUIRED
++                            | StatusCode::FORBIDDEN
++                            | StatusCode::TOO_MANY_REQUESTS
++                    ) =>
++                {
++                    let response_debug_context = extract_response_debug_context(&usage_transport);
++                    inference_trace_attempt.record_failed(
++                        &usage_transport,
++                        response_debug_context.request_id.as_deref(),
++                        /*output_items*/ &[],
++                    );
++                    if let Err(flip_err) = flip_opencode_go_key() {
++                        tracing::warn!("opencode-go key rotation failed: {flip_err}");
++                        let err = self
++                            .client
++                            .state
++                            .provider
++                            .map_api_error(ApiError::Transport(usage_transport));
++                        inference_trace_attempt.record_failed(
++                            &err,
++                            response_debug_context.request_id.as_deref(),
++                            /*output_items*/ &[],
++                        );
++                        return Err(err);
++                    }
++                    key_rotated = true;
++                    pending_retry = PendingUnauthorizedRetry::from_recovery(
++                        handle_unauthorized(
++                            usage_transport,
++                            &mut auth_recovery,
++                            session_telemetry,
++                            &self.client.state.provider,
++                        )
++                        .await?,
++                    );
++                    continue;
++                }
+                 Err(ApiError::Transport(
+                     unauthorized_transport @ TransportError::Http { status, .. },
+                 )) if status == StatusCode::UNAUTHORIZED => {
+diff --git a/codex-rs/core/src/client_tests.rs b/codex-rs/core/src/client_tests.rs
+index b0f521979..86b8e61cd 100644
+--- a/codex-rs/core/src/client_tests.rs
++++ b/codex-rs/core/src/client_tests.rs
+@@ -889,3 +889,65 @@ async fn non_chatgpt_codex_endpoints_omit_attestation_generation() {
+     );
+     assert_eq!(attestation_calls.load(Ordering::Relaxed), 0);
+ }
++
++#[test]
++fn rotate_opencode_go_key_state_defaults_to_key_two_then_back() -> anyhow::Result<()> {
++    let temp = TempDir::new()?;
++    super::rotate_opencode_go_key_state(temp.path())?;
++    assert_eq!(
++        std::fs::read_to_string(temp.path().join("oc-go.key"))?.trim(),
++        "2"
++    );
++    super::rotate_opencode_go_key_state(temp.path())?;
++    assert_eq!(
++        std::fs::read_to_string(temp.path().join("oc-go.key"))?.trim(),
++        "1"
++    );
++    Ok(())
++}
++
++#[test]
++fn rotate_opencode_go_key_state_respects_override() -> anyhow::Result<()> {
++    let temp = TempDir::new()?;
++    std::fs::write(temp.path().join("oc-go.override"), "2\n")?;
++    std::fs::write(temp.path().join("oc-go.key"), "1\n")?;
++    super::rotate_opencode_go_key_state(temp.path())?;
++    assert_eq!(
++        std::fs::read_to_string(temp.path().join("oc-go.key"))?.trim(),
++        "1"
++    );
++    Ok(())
++}
++
++#[test]
++fn provider_is_opencode_go_matches_only_gateway_url() {
++    let opencode = create_model_provider(
++        ModelProviderInfo {
++            name: "OpenCode Go".into(),
++            base_url: Some("https://opencode.ai/zen/go/v1".into()),
++            ..Default::default()
++        },
++        None,
++    );
++    assert!(super::provider_is_opencode_go(&opencode));
++
++    let openai = create_model_provider(
++        ModelProviderInfo {
++            name: "OpenAI".into(),
++            base_url: None,
++            ..Default::default()
++        },
++        None,
++    );
++    assert!(!super::provider_is_opencode_go(&openai));
++
++    let trailing_slash = create_model_provider(
++        ModelProviderInfo {
++            name: "OpenCode Go".into(),
++            base_url: Some("https://opencode.ai/zen/go/v1/".into()),
++            ..Default::default()
++        },
++        None,
++    );
++    assert!(super::provider_is_opencode_go(&trailing_slash));
++}
+-- 
+2.54.0
+
+
+From 1efb81f15de608575b3fd89f255fecf4a45f2a9b Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
+Date: Wed, 19 Aug 2026 16:53:44 +0200
+Subject: [PATCH 4/7] codex-swapper mod: omit client_metadata for non-OpenAI
+ providers + gate hosted web_search on model support
+
+- core/src/client.rs: only attach Responses API client_metadata for the OpenAI
+  provider. The opencode-go gateway's grok-4.5 upstream rejects the unknown
+  field ("json: unknown field client_metadata").
+- core/src/tools/spec_plan.rs: emit the hosted web_search tool only when
+  model_info.supports_search_tool is set, in addition to the provider
+  capability. kimi/glm/mimo/hy3 upstreams on opencode-go reject the web_search
+  tool shape.
+- core/src/client_tests.rs: custom_provider_responses_request_omits_client_metadata
+---
+ codex-rs/core/src/client.rs          |  5 +++-
+ codex-rs/core/src/client_tests.rs    | 45 ++++++++++++++++++++++++++++
+ codex-rs/core/src/tools/spec_plan.rs |  5 ++++
+ 3 files changed, 54 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
+index e920fdf98..1795c96fc 100644
+--- a/codex-rs/core/src/client.rs
++++ b/codex-rs/core/src/client.rs
+@@ -971,7 +971,10 @@ impl ModelClient {
+             service_tier,
+             prompt_cache_key,
+             text,
+-            client_metadata: Some(responses_metadata.client_metadata()),
++            // `client_metadata` is OpenAI-internal turn telemetry. Some custom
++            // providers (e.g. grok-4.5 on the opencode-go gateway) reject the
++            // unknown field outright, so only attach it for the OpenAI provider.
++            client_metadata: is_openai.then_some(responses_metadata.client_metadata()),
+         };
+         Ok(request)
+     }
+diff --git a/codex-rs/core/src/client_tests.rs b/codex-rs/core/src/client_tests.rs
+index 86b8e61cd..82e84f188 100644
+--- a/codex-rs/core/src/client_tests.rs
++++ b/codex-rs/core/src/client_tests.rs
+@@ -951,3 +951,48 @@ fn provider_is_opencode_go_matches_only_gateway_url() {
+     );
+     assert!(super::provider_is_opencode_go(&trailing_slash));
+ }
++
++#[tokio::test]
++async fn custom_provider_responses_request_omits_client_metadata() -> anyhow::Result<()> {
++    // client_metadata is OpenAI-internal turn telemetry. Custom providers such
++    // as the opencode-go gateway reject it (verified live with grok-4.5:
++    // "json: unknown field client_metadata"), so it must be omitted for any
++    // non-OpenAI provider while remaining present for the OpenAI provider.
++    let client = test_model_client(SessionSource::Cli);
++    let prompt = Prompt {
++        input: vec![ResponseItem::Message {
++            id: None,
++            role: "user".to_string(),
++            content: vec![ContentItem::InputText {
++                text: "hello".to_string(),
++            }],
++            phase: None,
++            internal_chat_message_metadata_passthrough: None,
++        }],
++        base_instructions: BaseInstructions {
++            text: "base instructions".to_string(),
++            provenance: None,
++        },
++        ..Default::default()
++    };
++    let responses_metadata = test_responses_metadata_for_client(
++        &client,
++        /*turn_id*/ None,
++        format!("{}:0", client.state.thread_id),
++        /*parent_thread_id*/ None,
++        TestCodexResponsesRequestKind::Turn,
++    );
++    let request = client.build_responses_request(
++        &prompt,
++        &test_model_info(),
++        /*effort*/ None,
++        codex_protocol::config_types::ReasoningSummary::None,
++        /*service_tier*/ None,
++        &responses_metadata,
++    )?;
++    assert!(
++        request.client_metadata.is_none(),
++        "custom provider must not receive OpenAI client_metadata"
++    );
++    Ok(())
++}
+diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
+index e094213a2..db5d9e30b 100644
+--- a/codex-rs/core/src/tools/spec_plan.rs
++++ b/codex-rs/core/src/tools/spec_plan.rs
+@@ -562,7 +562,12 @@ fn hosted_model_tool_specs(
+         && registered_extension_tool_names.contains(&ToolName::namespaced("web", "run"));
+     // `Some(Cached/Live/Disabled)` are the options for mode when standalone search is unavailable
+     // and the provider supports hosted search. `None` prevents emitting a hosted search tool.
++    // Respect the per-model `supports_search_tool` flag in addition to the
++    // provider capability. Custom providers can expose models whose upstream
++    // rejects the hosted `web_search` tool (verified on the opencode-go gateway
++    // for kimi/glm/mimo/hy3), so the model catalog flag must gate emission.
+     let web_search_mode = (!standalone_web_search_available
++        && turn_context.model_info.supports_search_tool
+         && turn_context.provider.capabilities().web_search)
+         .then_some(turn_context.config.web_search_mode.value());
+     let web_search_config = web_search_mode
+-- 
+2.54.0
+
+
+From 489022aa9e08cdebdc452485bbae126ba21fda13 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
+Date: Wed, 19 Aug 2026 17:22:21 +0200
+Subject: [PATCH 5/7] codex-swapper mod: per-model supports_namespace_tools
+ flag (grok-4.5 on opencode-go rejects namespace tools)
+
+- protocol/src/openai_models.rs: add ModelInfo.supports_namespace_tools (default true)
+- core/src/tools/spec_plan.rs: namespace_tools_enabled honors the per-model flag
+- catalog: grok-4.5 sets it false (function-tools-only upstream)
+- update ModelInfo test literals
+---
+ codex-rs/app-server/tests/common/models_cache.rs     | 1 +
+ codex-rs/codex-api/tests/models_integration.rs       | 1 +
+ codex-rs/core/src/tools/spec_plan.rs                 | 7 ++++++-
+ codex-rs/core/tests/suite/auto_review.rs             | 1 +
+ codex-rs/core/tests/suite/model_switching.rs         | 2 ++
+ codex-rs/core/tests/suite/models_cache_ttl.rs        | 1 +
+ codex-rs/core/tests/suite/personality.rs             | 2 ++
+ codex-rs/core/tests/suite/remote_models.rs           | 3 +++
+ codex-rs/core/tests/suite/rmcp_client.rs             | 1 +
+ codex-rs/core/tests/suite/spawn_agent_description.rs | 1 +
+ codex-rs/core/tests/suite/view_image.rs              | 1 +
+ codex-rs/models-manager/src/model_info.rs            | 1 +
+ codex-rs/protocol/src/openai_models.rs               | 7 +++++++
+ codex-rs/tools/src/tool_config_tests.rs              | 1 +
+ 14 files changed, 29 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/app-server/tests/common/models_cache.rs b/codex-rs/app-server/tests/common/models_cache.rs
+index 220d4615c..9a37053db 100644
+--- a/codex-rs/app-server/tests/common/models_cache.rs
++++ b/codex-rs/app-server/tests/common/models_cache.rs
+@@ -64,6 +64,7 @@ fn preset_to_info(preset: &ModelPreset, priority: i32) -> ModelInfo {
+         input_modalities: default_input_modalities(),
+         used_fallback_model_metadata: false,
+         supports_search_tool: false,
++        supports_namespace_tools: true,
+         use_responses_lite: false,
+         node_repl_auto_review_required: false,
+         node_repl_disabled: false,
+diff --git a/codex-rs/codex-api/tests/models_integration.rs b/codex-rs/codex-api/tests/models_integration.rs
+index 6d59fd497..6613da9c1 100644
+--- a/codex-rs/codex-api/tests/models_integration.rs
++++ b/codex-rs/codex-api/tests/models_integration.rs
+@@ -102,6 +102,7 @@ async fn models_client_hits_models_endpoint() {
+             input_modalities: default_input_modalities(),
+             used_fallback_model_metadata: false,
+             supports_search_tool: false,
++            supports_namespace_tools: true,
+             use_responses_lite: false,
+             node_repl_auto_review_required: true,
+             node_repl_disabled: true,
+diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
+index db5d9e30b..8ac6836a8 100644
+--- a/codex-rs/core/src/tools/spec_plan.rs
++++ b/codex-rs/core/src/tools/spec_plan.rs
+@@ -595,7 +595,12 @@ pub(crate) fn tool_suggest_enabled(turn_context: &TurnContext) -> bool {
+ }
+ 
+ fn namespace_tools_enabled(turn_context: &TurnContext) -> bool {
+-    turn_context.provider.capabilities().namespace_tools
++    // Per-model override: some custom-provider upstreams only accept `function`
++    // tools and reject the `namespace` discriminator (verified live for
++    // grok-4.5 on the opencode-go gateway). The model catalog flag gates
++    // emission while leaving OpenAI/other custom models unchanged.
++    turn_context.model_info.supports_namespace_tools
++        && turn_context.provider.capabilities().namespace_tools
+ }
+ 
+ fn multi_agent_v2_enabled(turn_context: &TurnContext) -> bool {
+diff --git a/codex-rs/core/tests/suite/auto_review.rs b/codex-rs/core/tests/suite/auto_review.rs
+index 513a7b54c..610cff428 100644
+--- a/codex-rs/core/tests/suite/auto_review.rs
++++ b/codex-rs/core/tests/suite/auto_review.rs
+@@ -258,6 +258,7 @@ fn remote_model_with_auto_review_override(slug: &str, review_model: &str) -> Mod
+         input_modalities: default_input_modalities(),
+         used_fallback_model_metadata: false,
+         supports_search_tool: false,
++        supports_namespace_tools: true,
+         use_responses_lite: false,
+         node_repl_auto_review_required: false,
+         node_repl_disabled: false,
+diff --git a/codex-rs/core/tests/suite/model_switching.rs b/codex-rs/core/tests/suite/model_switching.rs
+index b233c7ccc..1c85809f5 100644
+--- a/codex-rs/core/tests/suite/model_switching.rs
++++ b/codex-rs/core/tests/suite/model_switching.rs
+@@ -111,6 +111,7 @@ fn test_model_info(
+         input_modalities,
+         used_fallback_model_metadata: false,
+         supports_search_tool: false,
++        supports_namespace_tools: true,
+         use_responses_lite: false,
+         node_repl_auto_review_required: false,
+         node_repl_disabled: false,
+@@ -1183,6 +1184,7 @@ async fn model_switch_to_smaller_model_updates_token_context_window() -> Result<
+         input_modalities: default_input_modalities(),
+         used_fallback_model_metadata: false,
+         supports_search_tool: false,
++        supports_namespace_tools: true,
+         use_responses_lite: false,
+         node_repl_auto_review_required: false,
+         node_repl_disabled: false,
+diff --git a/codex-rs/core/tests/suite/models_cache_ttl.rs b/codex-rs/core/tests/suite/models_cache_ttl.rs
+index 2241da101..2f44cf642 100644
+--- a/codex-rs/core/tests/suite/models_cache_ttl.rs
++++ b/codex-rs/core/tests/suite/models_cache_ttl.rs
+@@ -534,6 +534,7 @@ fn test_remote_model(slug: &str, priority: i32) -> ModelInfo {
+         input_modalities: default_input_modalities(),
+         used_fallback_model_metadata: false,
+         supports_search_tool: false,
++        supports_namespace_tools: true,
+         use_responses_lite: false,
+         node_repl_auto_review_required: false,
+         node_repl_disabled: false,
+diff --git a/codex-rs/core/tests/suite/personality.rs b/codex-rs/core/tests/suite/personality.rs
+index 5e8b7f28a..51eb092e5 100644
+--- a/codex-rs/core/tests/suite/personality.rs
++++ b/codex-rs/core/tests/suite/personality.rs
+@@ -667,6 +667,7 @@ async fn remote_model_friendly_personality_instructions_with_feature() -> anyhow
+         input_modalities: default_input_modalities(),
+         used_fallback_model_metadata: false,
+         supports_search_tool: false,
++        supports_namespace_tools: true,
+         use_responses_lite: false,
+         node_repl_auto_review_required: false,
+         node_repl_disabled: false,
+@@ -792,6 +793,7 @@ async fn user_turn_personality_remote_model_template_includes_update_message() -
+         input_modalities: default_input_modalities(),
+         used_fallback_model_metadata: false,
+         supports_search_tool: false,
++        supports_namespace_tools: true,
+         use_responses_lite: false,
+         node_repl_auto_review_required: false,
+         node_repl_disabled: false,
+diff --git a/codex-rs/core/tests/suite/remote_models.rs b/codex-rs/core/tests/suite/remote_models.rs
+index 5268fa319..7c0d13eb7 100644
+--- a/codex-rs/core/tests/suite/remote_models.rs
++++ b/codex-rs/core/tests/suite/remote_models.rs
+@@ -497,6 +497,7 @@ async fn remote_models_remote_model_uses_unified_exec() -> Result<()> {
+         input_modalities: default_input_modalities(),
+         used_fallback_model_metadata: false,
+         supports_search_tool: false,
++        supports_namespace_tools: true,
+         use_responses_lite: false,
+         node_repl_auto_review_required: false,
+         node_repl_disabled: false,
+@@ -752,6 +753,7 @@ async fn remote_models_apply_legacy_instructions() -> Result<()> {
+         input_modalities: default_input_modalities(),
+         used_fallback_model_metadata: false,
+         supports_search_tool: false,
++        supports_namespace_tools: true,
+         use_responses_lite: false,
+         node_repl_auto_review_required: false,
+         node_repl_disabled: false,
+@@ -1333,6 +1335,7 @@ fn test_remote_model_with_policy(
+         input_modalities: default_input_modalities(),
+         used_fallback_model_metadata: false,
+         supports_search_tool: false,
++        supports_namespace_tools: true,
+         use_responses_lite: false,
+         node_repl_auto_review_required: false,
+         node_repl_disabled: false,
+diff --git a/codex-rs/core/tests/suite/rmcp_client.rs b/codex-rs/core/tests/suite/rmcp_client.rs
+index 098c5d74c..9963dba78 100644
+--- a/codex-rs/core/tests/suite/rmcp_client.rs
++++ b/codex-rs/core/tests/suite/rmcp_client.rs
+@@ -2292,6 +2292,7 @@ async fn stdio_image_responses_are_sanitized_for_text_only_model() -> anyhow::Re
+                 input_modalities: vec![InputModality::Text],
+                 used_fallback_model_metadata: false,
+                 supports_search_tool: false,
++                supports_namespace_tools: true,
+                 use_responses_lite: false,
+                 node_repl_auto_review_required: false,
+                 node_repl_disabled: false,
+diff --git a/codex-rs/core/tests/suite/spawn_agent_description.rs b/codex-rs/core/tests/suite/spawn_agent_description.rs
+index 8cb49c11e..06f7c02b2 100644
+--- a/codex-rs/core/tests/suite/spawn_agent_description.rs
++++ b/codex-rs/core/tests/suite/spawn_agent_description.rs
+@@ -73,6 +73,7 @@ fn test_model_info(
+         input_modalities: default_input_modalities(),
+         used_fallback_model_metadata: false,
+         supports_search_tool: false,
++        supports_namespace_tools: true,
+         use_responses_lite: false,
+         node_repl_auto_review_required: false,
+         node_repl_disabled: false,
+diff --git a/codex-rs/core/tests/suite/view_image.rs b/codex-rs/core/tests/suite/view_image.rs
+index 7607d48da..e0a66bfff 100644
+--- a/codex-rs/core/tests/suite/view_image.rs
++++ b/codex-rs/core/tests/suite/view_image.rs
+@@ -1617,6 +1617,7 @@ async fn view_image_tool_returns_unsupported_message_for_text_only_model() -> an
+         input_modalities: vec![InputModality::Text],
+         used_fallback_model_metadata: false,
+         supports_search_tool: false,
++        supports_namespace_tools: true,
+         use_responses_lite: false,
+         node_repl_auto_review_required: false,
+         node_repl_disabled: false,
+diff --git a/codex-rs/models-manager/src/model_info.rs b/codex-rs/models-manager/src/model_info.rs
+index e9dc94ff4..bca77c594 100644
+--- a/codex-rs/models-manager/src/model_info.rs
++++ b/codex-rs/models-manager/src/model_info.rs
+@@ -174,6 +174,7 @@ pub fn model_info_from_slug(slug: &str) -> ModelInfo {
+         input_modalities: default_input_modalities(),
+         used_fallback_model_metadata: true, // this is the fallback model metadata
+         supports_search_tool: false,
++        supports_namespace_tools: true,
+         use_responses_lite: false,
+         node_repl_auto_review_required: false,
+         node_repl_disabled: false,
+diff --git a/codex-rs/protocol/src/openai_models.rs b/codex-rs/protocol/src/openai_models.rs
+index 697bc1360..a84c9f58d 100644
+--- a/codex-rs/protocol/src/openai_models.rs
++++ b/codex-rs/protocol/src/openai_models.rs
+@@ -451,6 +451,12 @@ pub struct ModelInfo {
+     pub used_fallback_model_metadata: bool,
+     #[serde(default)]
+     pub supports_search_tool: bool,
++    /// Whether the model accepts Responses API namespace tools (MCP/plugin
++    /// namespaces, multi-agent). Some custom-provider upstreams only accept
++    /// `function` tools (e.g. grok-4.5 on the opencode-go gateway rejects
++    /// `namespace` discriminators outright), so the catalog can gate emission.
++    #[serde(default = "default_true", skip_serializing_if = "is_true")]
++    pub supports_namespace_tools: bool,
+     #[serde(default)]
+     pub use_responses_lite: bool,
+     #[serde(default)]
+@@ -894,6 +900,7 @@ mod tests {
+             input_modalities: default_input_modalities(),
+             used_fallback_model_metadata: false,
+             supports_search_tool: false,
++            supports_namespace_tools: true,
+             use_responses_lite: false,
+             node_repl_auto_review_required: false,
+             node_repl_disabled: false,
+diff --git a/codex-rs/tools/src/tool_config_tests.rs b/codex-rs/tools/src/tool_config_tests.rs
+index 49b8bee71..476fa71ba 100644
+--- a/codex-rs/tools/src/tool_config_tests.rs
++++ b/codex-rs/tools/src/tool_config_tests.rs
+@@ -47,6 +47,7 @@ fn model_with_shell_type(shell_type: ConfigShellToolType) -> ModelInfo {
+         input_modalities: codex_protocol::openai_models::default_input_modalities(),
+         used_fallback_model_metadata: false,
+         supports_search_tool: false,
++        supports_namespace_tools: true,
+         use_responses_lite: false,
+         node_repl_auto_review_required: false,
+         node_repl_disabled: false,
+-- 
+2.54.0
+
+
+From 6e11e883a3dc83be69cfd0c79075d693ee189eab Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
+Date: Wed, 19 Aug 2026 18:24:49 +0200
+Subject: [PATCH 6/7] codex-swapper mod: keep OpenCode Go key failover armed
+ when provider is routed via the US-forwarding loopback proxy
+
+---
+ codex-rs/core/src/client.rs       | 10 +++++++++-
+ codex-rs/core/src/client_tests.rs | 21 +++++++++++++++++++++
+ 2 files changed, 30 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
+index 1795c96fc..0e426ad7c 100644
+--- a/codex-rs/core/src/client.rs
++++ b/codex-rs/core/src/client.rs
+@@ -203,7 +203,15 @@ fn provider_is_opencode_go(provider: &SharedModelProvider) -> bool {
+         .info()
+         .base_url
+         .as_deref()
+-        .is_some_and(|url| url.trim_end_matches('/') == "https://opencode.ai/zen/go/v1")
++        .is_some_and(|url| {
++            let url = url.trim_end_matches('/');
++            url == "https://opencode.ai/zen/go/v1"
++                // The US-forwarding proxy (us-forward-proxy.py) redirects the
++                // provider to a loopback URL; keep the failover armed there.
++                || (provider.info().name == "OpenCode Go"
++                    && (url.starts_with("http://127.0.0.1:") || url.starts_with("http://localhost:"))
++                    && url.ends_with("/v1"))
++        })
+ }
+ 
+ /// Rotates the preferred OpenCode Go key between `1` and `2` in `home`.
+diff --git a/codex-rs/core/src/client_tests.rs b/codex-rs/core/src/client_tests.rs
+index 82e84f188..db4db3265 100644
+--- a/codex-rs/core/src/client_tests.rs
++++ b/codex-rs/core/src/client_tests.rs
+@@ -950,6 +950,27 @@ fn provider_is_opencode_go_matches_only_gateway_url() {
+         None,
+     );
+     assert!(super::provider_is_opencode_go(&trailing_slash));
++
++    // The US-forwarding proxy path keeps the failover armed (option B wiring).
++    let via_loopback_proxy = create_model_provider(
++        ModelProviderInfo {
++            name: "OpenCode Go".into(),
++            base_url: Some("http://127.0.0.1:18887/v1".into()),
++            ..Default::default()
++        },
++        None,
++    );
++    assert!(super::provider_is_opencode_go(&via_loopback_proxy));
++
++    let loopback_with_wrong_name = create_model_provider(
++        ModelProviderInfo {
++            name: "Some Other Gateway".into(),
++            base_url: Some("http://127.0.0.1:18887/v1".into()),
++            ..Default::default()
++        },
++        None,
++    );
++    assert!(!super::provider_is_opencode_go(&loopback_with_wrong_name));
+ }
+ 
+ #[tokio::test]
+-- 
+2.54.0
+
+
+From 308ff33a0d597f1aec0515d2656722d60642528b Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
+Date: Wed, 19 Aug 2026 23:57:26 +0200
+Subject: [PATCH 7/7] codex-swapper mod: match the OpenCode Go provider family
+ (incl. 'OpenCode Go US') for loopback failover arming
+
+---
+ codex-rs/core/src/client.rs       |  4 +++-
+ codex-rs/core/src/client_tests.rs | 10 ++++++++++
+ 2 files changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
+index 0e426ad7c..9d18b0d8b 100644
+--- a/codex-rs/core/src/client.rs
++++ b/codex-rs/core/src/client.rs
+@@ -208,7 +208,9 @@ fn provider_is_opencode_go(provider: &SharedModelProvider) -> bool {
+             url == "https://opencode.ai/zen/go/v1"
+                 // The US-forwarding proxy (us-forward-proxy.py) redirects the
+                 // provider to a loopback URL; keep the failover armed there.
+-                || (provider.info().name == "OpenCode Go"
++                // The US provider may be named "OpenCode Go US" for the picker,
++                // so match the family prefix rather than the exact name.
++                || (provider.info().name.starts_with("OpenCode Go")
+                     && (url.starts_with("http://127.0.0.1:") || url.starts_with("http://localhost:"))
+                     && url.ends_with("/v1"))
+         })
+diff --git a/codex-rs/core/src/client_tests.rs b/codex-rs/core/src/client_tests.rs
+index db4db3265..72e11f4ee 100644
+--- a/codex-rs/core/src/client_tests.rs
++++ b/codex-rs/core/src/client_tests.rs
+@@ -962,6 +962,16 @@ fn provider_is_opencode_go_matches_only_gateway_url() {
+     );
+     assert!(super::provider_is_opencode_go(&via_loopback_proxy));
+ 
++    let via_loopback_proxy_us_named = create_model_provider(
++        ModelProviderInfo {
++            name: "OpenCode Go US".into(),
++            base_url: Some("http://127.0.0.1:18887/v1".into()),
++            ..Default::default()
++        },
++        None,
++    );
++    assert!(super::provider_is_opencode_go(&via_loopback_proxy_us_named));
++
+     let loopback_with_wrong_name = create_model_provider(
+         ModelProviderInfo {
+             name: "Some Other Gateway".into(),
+-- 
+2.54.0
+

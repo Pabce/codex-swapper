@@ -1,0 +1,110 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "rust-v*"
+      - "0.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. 0.148.0-alpha.15)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos-arm64:
+    runs-on: macos-14  # arm64
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer 2>/dev/null || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer || true
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: codex-rs/codex-rs -> target
+
+      - name: Resolve version
+        id: ver
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+          if [ -z "$TAG" ]; then TAG="${GITHUB_REF_NAME}"; fi
+          # Normalize: strip leading v or rust-v
+          VER="${TAG#rust-v}"
+          VER="${VER#v}"
+          if [ -z "$VER" ]; then VER="$(./codex-rs/codex-rs/target/release/codex --version 2>/dev/null | awk '{print $2}' || echo '0.0.0')"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+          echo "resolved tag=$TAG ver=$VER"
+
+      - name: Build modded codex (release)
+        run: |
+          set -euo pipefail
+          ./build-mod.sh
+          ./codex-rs/codex-rs/target/release/codex --version
+          ls -lh ./codex-rs/codex-rs/target/release/codex*
+          file ./codex-rs/codex-rs/target/release/codex
+
+      - name: Smoke test (merged model/list)
+        run: |
+          set -euo pipefail
+          python3 ./tier2_stdio_smoke.py 2>&1 | tail -n 80
+
+      - name: Unit tests (client + models)
+        run: |
+          set -euo pipefail
+          cargo test -p codex-core --lib client_tests -- --nocapture 2>&1 | tail -n 40
+          cargo test -p codex-models-manager --lib manager_tests -- --nocapture 2>&1 | tail -n 40
+        working-directory: codex-rs/codex-rs
+
+      - name: Stage Release asset
+        run: |
+          set -euo pipefail
+          VER="${{ steps.ver.outputs.ver }}"
+          OUT="dist"
+          mkdir -p "$OUT"
+          STAGE="$(mktemp -d)"
+          cp ./codex-rs/codex-rs/target/release/codex "$STAGE/codex"
+          cp ./codex-rs/codex-rs/target/release/codex-code-mode-host "$STAGE/codex-code-mode-host" 2>/dev/null || cp /Applications/ChatGPT.app/Contents/Resources/codex-code-mode-host "$STAGE/codex-code-mode-host" 2>/dev/null || true
+          mkdir -p "$STAGE/model-catalogs" "$STAGE/bin"
+          cp ./model-catalogs/*.json "$STAGE/model-catalogs/" 2>/dev/null || true
+          cp ./bin/* "$STAGE/bin/" 2>/dev/null || true
+          # Include launchers for curl|bash users
+          cp ./launch-tier2.sh "$STAGE/" 2>/dev/null || true
+          cp ./launch-us-proxy.sh "$STAGE/" 2>/dev/null || true
+          cp ./us-forward-proxy.py "$STAGE/" 2>/dev/null || true
+          tar -czf "$OUT/codex-macos-arm64-$VER.tar.gz" -C "$STAGE" .
+          ls -lh "$OUT/"
+          echo "asset=$OUT/codex-macos-arm64-$VER.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tar.gz
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+      - name: Upload artifact (dispatch)
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-macos-arm64-${{ steps.ver.outputs.ver }}
+          path: dist/*.tar.gz
+          retention-days: 14

@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# oc-go-key - OpenCode Go key dispatcher for the codex-swapper failover mod.
+#
+# Reads the preferred key from $CODEX_HOME/oc-go.key (default "1") and an
+# optional user pin from $CODEX_HOME/oc-go.override (values "1" or "2").
+# Prints the selected Keychain secret on stdout; the harness trims it and uses
+# it as the bearer token. Falls back to the other key when the selected
+# Keychain item is missing or empty so we never hand the gateway an empty token.
+set -euo pipefail
+
+home="${CODEX_HOME:-$HOME/.codex}"
+
+key=""
+if [[ -f "$home/oc-go.override" ]]; then
+  key="$(tr -d '[:space:]' < "$home/oc-go.override")"
+fi
+if [[ -z "$key" ]]; then
+  key="1"
+  if [[ -f "$home/oc-go.key" ]]; then
+    key="$(tr -d '[:space:]' < "$home/oc-go.key")"
+    [[ "$key" == "1" || "$key" == "2" ]] || key="1"
+  fi
+fi
+
+key1="$(/usr/bin/security find-generic-password -w -a pbarham -s opencode-go 2>/dev/null || true)"
+key2="$(/usr/bin/security find-generic-password -w -a pbarham -s opencode-go-alt 2>/dev/null || true)"
+
+if [[ "$key" == "2" ]]; then
+  if [[ -n "$key2" ]]; then printf '%s' "$key2"; else printf '%s' "$key1"; fi
+else
+  if [[ -n "$key1" ]]; then printf '%s' "$key1"; else printf '%s' "$key2"; fi
+fi
+
+# Best-effort, detached refresh of the usage cache ($CODEX_HOME/oc-usage.json,
+# percentages only). The harness runs this dispatcher OUTSIDE the sandbox, so
+# this is the one place that can reach the Keychain; sandboxed `oc-usage` calls
+# fall back to the cache it leaves behind. TTL-gated to ~10 min, fully
+# backgrounded, and never allowed to affect this script's output or status.
+cache="$home/oc-usage.json"
+stale=1
+if [[ -f "$cache" ]]; then
+  age=$(( $(date +%s) - $(stat -f %m "$cache" 2>/dev/null || echo 0) ))
+  (( age > 600 )) || stale=0
+fi
+if (( stale )); then
+  { nohup "$HOME/.codex/bin/oc-usage" --refresh-cache >/dev/null 2>&1 & } >/dev/null 2>&1 || true
+fi
+true

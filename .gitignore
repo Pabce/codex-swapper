@@ -1,0 +1,36 @@
+# Rust build
+codex-rs/codex-rs/target/
+codex-rs/target/
+**/target/
+
+# Codex runtime / local homes (never commit)
+codex-mod-home/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.log
+__pycache__/
+*.pyc
+.DS_Store
+
+# Local session artifacts
+codex-session-*.md
+rollout-*.jsonl
+*.tmp
+
+# Local env / secrets (never commit)
+.env
+us-proxy.env
+opencode-go.key
+
+# Release tarballs
+dist/
+*.tar.gz
+
+# Old patch artifact
+mod-changes-*.patch
+
+# Nested fork checkout — not committed; rebuilt from tag + mod.patch or Release binary
+codex-rs/
+# Keep the patch itself
+!mod.patch

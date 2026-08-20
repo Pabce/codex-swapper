@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+"""oc-usage — OpenCode Go subscription usage for both keys.
+
+Queries the key-gated gateway endpoint https://opencode.ai/zen/go/v1/usage for
+the `opencode-go` and `opencode-go-alt` Keychain items. This is the same
+rolling / weekly / monthly usage the opencode.ai workspace dashboard shows,
+without logging into the website.
+
+Also reports which key the codex-swapper failover mod is currently on
+($CODEX_HOME/oc-go.key, pinned by $CODEX_HOME/oc-go.override).
+
+A successful fetch is cached (percentages only, no secrets) to
+$CODEX_HOME/oc-usage.json. Codex runs agent shell commands inside a sandbox
+that blocks Keychain access, so when the live fetch is unavailable this falls
+back to the cache and labels how old it is.
+
+Usage:
+  oc-usage                  human-readable report
+  oc-usage --json           raw JSON (adds "key", "service", "active", "error")
+  oc-usage --short          one line per key
+  oc-usage --refresh-cache  quiet best-effort cache refresh (used by oc-go-key)
+
+Exit status: 0 if at least one key reported (live or cached), 1 if none did.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+
+USAGE_URL = "https://opencode.ai/zen/go/v1/usage"
+ACCOUNT = "pbarham"
+SERVICES = {1: "opencode-go", 2: "opencode-go-alt"}
+WINDOWS = ("rolling", "weekly", "monthly")
+
+
+def codex_home() -> str:
+    return os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
+
+
+def active_key() -> tuple[int, bool]:
+    """Return (key number, pinned) as the auth dispatcher would resolve it."""
+    home = codex_home()
+    for name, pinned in ((os.path.join(home, "oc-go.override"), True),
+                         (os.path.join(home, "oc-go.key"), False)):
+        try:
+            with open(name) as handle:
+                value = handle.read().strip()
+        except OSError:
+            continue
+        if value in ("1", "2"):
+            return int(value), pinned
+    return 1, False
+
+
+def cache_path() -> str:
+    return os.path.join(codex_home(), "oc-usage.json")
+
+
+def write_cache(keys: list[dict]) -> None:
+    """Persist the usage numbers. Contains percentages only — never a key."""
+    payload = {
+        "fetchedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "keys": [{k: v for k, v in entry.items() if k != "active"} for entry in keys],
+    }
+    tmp = cache_path() + ".tmp"
+    try:
+        with open(tmp, "w") as handle:
+            json.dump(payload, handle)
+        os.replace(tmp, cache_path())
+    except OSError:
+        pass
+
+
+def read_cache():
+    try:
+        with open(cache_path()) as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None, None
+    return payload.get("keys"), payload.get("fetchedAt")
+
+
+def cache_age(iso: str | None) -> str:
+    if not iso:
+        return "unknown age"
+    try:
+        when = datetime.fromisoformat(iso)
+    except ValueError:
+        return "unknown age"
+    seconds = int((datetime.now(timezone.utc) - when).total_seconds())
+    if seconds < 90:
+        return "just now"
+    if seconds < 5400:
+        return f"{seconds // 60}m ago"
+    return f"{seconds // 3600}h ago"
+
+
+def keychain_key(service: str) -> str | None:
+    proc = subprocess.run(
+        ["/usr/bin/security", "find-generic-password", "-w", "-a", ACCOUNT, "-s", service],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip()
+
+
+def fetch_usage(service: str):
+    key = keychain_key(service)
+    if key is None:
+        return None, "no Keychain item"
+    if not key:
+        return None, "empty Keychain item"
+    # Cloudflare rejects urllib's TLS fingerprint (error 1010); curl is fine.
+    proc = subprocess.run(
+        ["curl", "-sS", "-m", "20", "-H", f"Authorization: Bearer {key}", USAGE_URL],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        return None, f"curl failed: {proc.stderr.strip()[:160]}"
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None, f"non-JSON response: {proc.stdout.strip()[:160]}"
+    if "error" in data:
+        return None, f"api error: {json.dumps(data['error'])[:160]}"
+    return data.get("usage", {}), None
+
+
+def until(iso: str | None) -> str:
+    if not iso:
+        return "?"
+    try:
+        when = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except ValueError:
+        return str(iso)
+    seconds = (when - datetime.now(timezone.utc)).total_seconds()
+    if seconds <= 0:
+        return "due"
+    days, rem = divmod(int(seconds), 86400)
+    hours, minutes = divmod(rem // 60, 60)
+    if days:
+        return f"{days}d {hours}h"
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
+
+
+def bar(percent) -> str:
+    if not isinstance(percent, (int, float)):
+        return " " * 10
+    filled = max(0, min(10, round(percent / 10)))
+    return "█" * filled + "·" * (10 - filled)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(add_help=True, description=__doc__)
+    parser.add_argument("--json", action="store_true", dest="as_json")
+    parser.add_argument("--short", action="store_true")
+    parser.add_argument("--refresh-cache", action="store_true", dest="refresh_cache")
+    opts = parser.parse_args()
+
+    current, pinned = active_key()
+    results, reported = [], 0
+
+    for num, service in SERVICES.items():
+        usage, err = fetch_usage(service)
+        entry = {"key": num, "service": service, "active": num == current}
+        if err:
+            entry["error"] = err
+        else:
+            entry.update(usage or {})
+            reported += 1
+        results.append(entry)
+
+    if reported:
+        write_cache(results)
+        stale = None
+    else:
+        # Sandboxed callers cannot reach the Keychain; fall back to the cache.
+        cached, fetched_at = read_cache()
+        if cached:
+            by_key = {entry["key"]: entry for entry in cached}
+            results = [
+                {**by_key.get(entry["key"], entry), "active": entry["active"]}
+                for entry in results
+            ]
+            reported = sum(1 for entry in results if "error" not in entry)
+            stale = cache_age(fetched_at)
+
+    if opts.refresh_cache:
+        return 0 if reported else 1
+
+    if opts.as_json:
+        print(json.dumps({"activeKey": current, "pinned": pinned,
+                          "cached": stale is not None, "cacheAge": stale,
+                          "keys": results}, indent=2))
+        return 0 if reported else 1
+
+    for entry in results:
+        mark = "  <- active" + (" (pinned)" if pinned else "") if entry["active"] else ""
+        head = f"key {entry['key']} ({entry['service']}){mark}"
+        if "error" in entry:
+            print(f"{head}: {entry['error']}")
+            print()
+            continue
+        if opts.short:
+            parts = []
+            for window in WINDOWS:
+                data = entry.get(window) or {}
+                flag = "!" if data.get("status") != "ok" else ""
+                parts.append(f"{window[0]}{data.get('percent', '?')}%{flag}")
+            label = f"key {entry['key']} ({entry['service']})"
+            print(f"{label}: " + "  ".join(parts) + mark)
+            continue
+        print(head)
+        for window in WINDOWS:
+            data = entry.get(window)
+            if not data:
+                continue
+            percent = data.get("percent")
+            pct = f"{percent}%" if isinstance(percent, (int, float)) else "?"
+            status = str(data.get("status", "?"))
+            print(f"  {window:8s} {bar(percent)} {pct:>5s}  {status:>12s}"
+                  f"   resets in {until(data.get('resetsAt'))}")
+        print()
+
+    if stale is not None:
+        print(f"note: live fetch unavailable (sandboxed Keychain) — showing cached "
+              f"numbers from {stale}. For fresh data run oc-usage outside the "
+              "sandbox (escalated permissions).")
+    if not opts.short and pinned:
+        print(f"note: key {current} is pinned by {codex_home()}/oc-go.override "
+              "— the failover will not rotate.")
+    return 0 if reported else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
