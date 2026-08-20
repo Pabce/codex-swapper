@@ -159,7 +159,7 @@ def main() -> int:
     luna_ids = {m.get("model") for m in luna_rows}
     ok = (
         "deepseek-v4-flash" in model_ids
-        and "muse-spark-1.2" not in model_ids  # gateway dropped it 2026-08-20
+        and "muse-spark-1.2" in model_ids
         and "muse-spark-1.2-contributor" in model_ids
         and result.get("modelProvider") == "opencode-go"
         and luna_ids == {"gpt-5.6-luna", "opencode-go/gpt-5.6-luna"}
@@ -180,7 +180,7 @@ def main() -> int:
                 e.get("reasoningEffort")
                 for e in m.get("supportedReasoningEfforts", [])
             }
-            == {"minimal", "low", "medium", "high", "xhigh", "max"}
+            == {"low", "high", "max"}
             for m in model_rows
         )
         and any(
