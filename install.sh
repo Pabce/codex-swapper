@@ -2,7 +2,7 @@
 # codex-swapper install — one-command setup for macOS arm64 + latest ChatGPT.app
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/pbarham/codex-swapper/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Pabce/codex-swapper/main/install.sh | bash
 #   ./install.sh                          # binary install (download Release asset)
 #   ./install.sh --from-source            # build locally (needs cargo + ~12 GiB free)
 #   ./install.sh --with-us-proxy          # also template ~/.config/codex-swapper/us-proxy.env
