@@ -335,6 +335,17 @@ request shape and real `codex-mod exec` turns. Key finding: several models
 request features. The failures fall into three gateway-translation gaps, all
 now handled:
 
+**Update 2026-08-20**: `muse-spark-1.2` (standard) was REMOVED from the
+catalogs — the gateway no longer serves it (probe: "Model muse-spark-1.2 is
+not supported", direct and via the US exit; absent from the gateway `/models`
+list). Only `muse-spark-1.2-contributor` remains. The reasoning-effort arrays
+for every catalog model were re-verified live (minimal..max probe matrix, see
+MOD_STATUS "Reasoning-effort arrays"): deepseek gained minimal/medium/xhigh,
+and grok/hy3/kimi/glm/mimo gained minimal; luna (low..max) and the
+contributor (minimal..xhigh, max rejected) were already correct. `none` is
+accepted by the gateway for most models but rejected for grok-4.5 and the
+contributor, and is intentionally not surfaced in the picker arrays.
+
 1. **`client_metadata`** (grok-4.5: `json: unknown field client_metadata`).
    `client_metadata` is OpenAI-internal turn telemetry, so `build_responses_request`
    now attaches it only for the OpenAI provider (commit `1efb81f15`).

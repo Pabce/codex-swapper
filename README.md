@@ -15,7 +15,7 @@ Target: **macOS arm64 + recent ChatGPT.app only**. No Linux/Intel compat layers.
 ./install.sh
 
 # Or from anywhere (second Mac, colleague's Mac):
-curl -fsSL https://raw.githubusercontent.com/pbarham/codex-swapper/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Pabce/codex-swapper/main/install.sh | bash
 ```
 
 This:

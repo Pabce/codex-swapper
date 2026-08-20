@@ -1,6 +1,6 @@
 # MOD_STATUS — codex-swapper mod pinned state
 
-Last updated: 2026-08-20T12:00:00Z (CLI US profile now exposes all models)
+Last updated: 2026-08-20T12:15:00Z (live effort-array audit; muse-spark-1.2 removed)
 
 ## Pinned release
 - App build: 26.814.41407
@@ -62,6 +62,12 @@ reasoning, text.verbosity, parallel_tool_calls) + real `codex-mod exec` turns.
   glm-5, glm-5.1, glm-5.2, kimi-k2.5, kimi-k2.6, mimo-v2.5.
 
 ### muse-spark-1.2 note
+- REMOVED from the catalogs on 2026-08-20: the opencode-go gateway no longer
+  serves `muse-spark-1.2` (live probe -> "Model muse-spark-1.2 is not
+  supported", direct and via the US exit; absent from the gateway `/models`
+  list of 27). Only `muse-spark-1.2-contributor` remains. The historical notes
+  below apply to the period when the model was still served (verified
+  2026-08-19); re-add the entry if the gateway restores it.
 - Passes plain and function-call Responses API turns, but the opencode-go
   gateway's muse-spark upstream rejects the freeform `custom` apply_patch tool
   ("`custom` tools are not supported on this endpoint"). The model natively
@@ -89,14 +95,31 @@ reasoning, text.verbosity, parallel_tool_calls) + real `codex-mod exec` turns.
 - hy3-preview — "Model is unavailable".
 - muse-spark-1.2-contributor — geo-blocked ("not available in your country").
 
-## Reasoning-effort arrays (catalog data only)
-- muse-spark-1.2 — minimal/low/medium/high/xhigh (max rejected); default medium.
-- grok-4.5, hy3, glm-5*, kimi-k2*, mimo-v2.5* — low/medium/high/xhigh/max; default medium.
-- deepseek / luna — unchanged from prior verification.
+## Reasoning-effort arrays (LIVE-VERIFIED 2026-08-20 against the gateway)
+Probed every model x {minimal, low, medium, high, xhigh, max} with the exact
+Responses shape (contributor via the US proxy). Catalog arrays now match what
+the gateway accepts without error; defaults unchanged.
+- deepseek-v4-flash / deepseek-v4-pro — minimal..max (all six accepted;
+  previously under-listed low/high/max); default high.
+- gpt-5.6-luna — low..max (minimal rejected); default medium.
+- grok-4.5, hy3, kimi-k2.7-code, kimi-k2.6, kimi-k2.5, glm-5.3, glm-5.2,
+  glm-5.1, glm-5, mimo-v2.5-pro, mimo-v2.5 — minimal..max (minimal added;
+  accepted by gateway and upstream); default medium.
+- muse-spark-1.2-contributor — minimal..xhigh (max rejected: upstream accepts
+  none/minimal/low/medium/high/xhigh; none rejected by this endpoint);
+  default medium.
+- `none` is accepted by the gateway for deepseek/luna/hy3/kimi/glm/mimo but
+  REJECTED for grok-4.5 ("effort must be one of: minimal low medium high") and
+  muse-spark-1.2-contributor; it is intentionally NOT surfaced in the picker
+  arrays (kept to the standard codex minimal..max set).
+- muse-spark-1.2 — removed with the model (see note above).
 
 ## Verification
-- tier2_stdio_smoke.py: PASSED — merged `model/list` returns 8 OpenAI + 15 opencode-go
-  entries; muse/grok/hy3/glm/kimi/mimo present; luna namespace + deepseek resolution intact.
+- tier2_stdio_smoke.py: PASSED (re-verified 2026-08-20) — merged `model/list`
+  returns 8 OpenAI + 14 opencode-go + 1 contributor entries; muse-spark-1.2
+  absent (gateway drop); effort arrays asserted (deepseek minimal..max,
+  contributor minimal..xhigh, luna low..max); luna namespace + deepseek
+  resolution intact.
 - Unit tests: client_tests (incl. new custom-provider client_metadata test) PASS.
 - Real turns (2026-08-19): deepseek-flash, luna, hy3, glm-5.3, kimi-k2.7-code,
   mimo-v2.5-pro, grok-4.5, muse-spark-1.2 (incl. file-edit turn) COMPLETED.

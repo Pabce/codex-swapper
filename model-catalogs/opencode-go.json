@@ -8,12 +8,24 @@
    "default_reasoning_level": "high",
    "supported_reasoning_levels": [
     {
+     "effort": "minimal",
+     "description": "Minimal reasoning for simple tasks"
+    },
+    {
      "effort": "low",
      "description": "Fast responses with lighter reasoning"
     },
     {
+     "effort": "medium",
+     "description": "Balanced reasoning for everyday tasks"
+    },
+    {
      "effort": "high",
      "description": "Extra reasoning depth for complex problems"
+    },
+    {
+     "effort": "xhigh",
+     "description": "Extra high reasoning depth for complex problems"
     },
     {
      "effort": "max",
@@ -50,12 +62,24 @@
    "default_reasoning_level": "high",
    "supported_reasoning_levels": [
     {
+     "effort": "minimal",
+     "description": "Minimal reasoning for simple tasks"
+    },
+    {
      "effort": "low",
      "description": "Fast responses with lighter reasoning"
     },
     {
+     "effort": "medium",
+     "description": "Balanced reasoning for everyday tasks"
+    },
+    {
      "effort": "high",
      "description": "Extra reasoning depth for complex problems"
+    },
+    {
+     "effort": "xhigh",
+     "description": "Extra high reasoning depth for complex problems"
     },
     {
      "effort": "max",
@@ -135,9 +159,9 @@
    ]
   },
   {
-   "slug": "muse-spark-1.2",
-   "display_name": "Muse Spark 1.2",
-   "description": "OpenCode Go - Muse Spark 1.2 via the Responses API.",
+   "slug": "grok-4.5",
+   "display_name": "Grok 4.5",
+   "description": "OpenCode Go - Grok 4.5 via the Responses API.",
    "base_instructions": "You are Codex, an agentic coding assistant. Follow the user's instructions and all applicable AGENTS.md guidance. Use the provided tools to inspect, edit, and test the workspace, and continue until the requested task is genuinely complete.",
    "default_reasoning_level": "medium",
    "supported_reasoning_levels": [
@@ -145,52 +169,6 @@
      "effort": "minimal",
      "description": "Minimal reasoning for simple tasks"
     },
-    {
-     "effort": "low",
-     "description": "Fast responses with lighter reasoning"
-    },
-    {
-     "effort": "medium",
-     "description": "Balanced reasoning for everyday tasks"
-    },
-    {
-     "effort": "high",
-     "description": "Extra reasoning depth for complex problems"
-    },
-    {
-     "effort": "xhigh",
-     "description": "Extra high reasoning depth for complex problems"
-    }
-   ],
-   "shell_type": "shell_command",
-   "visibility": "list",
-   "supported_in_api": true,
-   "priority": 4,
-   "support_verbosity": true,
-   "default_verbosity": "low",
-   "apply_patch_tool_type": null,
-   "web_search_tool_type": "text",
-   "truncation_policy": {
-    "mode": "tokens",
-    "limit": 10000
-   },
-   "supports_parallel_tool_calls": true,
-   "supports_search_tool": false,
-   "experimental_supported_tools": [],
-   "context_window": 1000000,
-   "max_context_window": 1000000,
-   "effective_context_window_percent": 95,
-   "input_modalities": [
-    "text"
-   ]
-  },
-  {
-   "slug": "grok-4.5",
-   "display_name": "Grok 4.5",
-   "description": "OpenCode Go - Grok 4.5 via the Responses API.",
-   "base_instructions": "You are Codex, an agentic coding assistant. Follow the user's instructions and all applicable AGENTS.md guidance. Use the provided tools to inspect, edit, and test the workspace, and continue until the requested task is genuinely complete.",
-   "default_reasoning_level": "medium",
-   "supported_reasoning_levels": [
     {
      "effort": "low",
      "description": "Fast responses with lighter reasoning"
@@ -243,6 +221,10 @@
    "default_reasoning_level": "medium",
    "supported_reasoning_levels": [
     {
+     "effort": "minimal",
+     "description": "Minimal reasoning for simple tasks"
+    },
+    {
      "effort": "low",
      "description": "Fast responses with lighter reasoning"
     },
@@ -292,6 +274,10 @@
    "base_instructions": "You are Codex, an agentic coding assistant. Follow the user's instructions and all applicable AGENTS.md guidance. Use the provided tools to inspect, edit, and test the workspace, and continue until the requested task is genuinely complete.",
    "default_reasoning_level": "medium",
    "supported_reasoning_levels": [
+    {
+     "effort": "minimal",
+     "description": "Minimal reasoning for simple tasks"
+    },
     {
      "effort": "low",
      "description": "Fast responses with lighter reasoning"
@@ -343,6 +329,10 @@
    "default_reasoning_level": "medium",
    "supported_reasoning_levels": [
     {
+     "effort": "minimal",
+     "description": "Minimal reasoning for simple tasks"
+    },
+    {
      "effort": "low",
      "description": "Fast responses with lighter reasoning"
     },
@@ -392,6 +382,10 @@
    "base_instructions": "You are Codex, an agentic coding assistant. Follow the user's instructions and all applicable AGENTS.md guidance. Use the provided tools to inspect, edit, and test the workspace, and continue until the requested task is genuinely complete.",
    "default_reasoning_level": "medium",
    "supported_reasoning_levels": [
+    {
+     "effort": "minimal",
+     "description": "Minimal reasoning for simple tasks"
+    },
     {
      "effort": "low",
      "description": "Fast responses with lighter reasoning"
@@ -443,6 +437,10 @@
    "default_reasoning_level": "medium",
    "supported_reasoning_levels": [
     {
+     "effort": "minimal",
+     "description": "Minimal reasoning for simple tasks"
+    },
+    {
      "effort": "low",
      "description": "Fast responses with lighter reasoning"
     },
@@ -492,6 +490,10 @@
    "base_instructions": "You are Codex, an agentic coding assistant. Follow the user's instructions and all applicable AGENTS.md guidance. Use the provided tools to inspect, edit, and test the workspace, and continue until the requested task is genuinely complete.",
    "default_reasoning_level": "medium",
    "supported_reasoning_levels": [
+    {
+     "effort": "minimal",
+     "description": "Minimal reasoning for simple tasks"
+    },
     {
      "effort": "low",
      "description": "Fast responses with lighter reasoning"
@@ -543,6 +545,10 @@
    "default_reasoning_level": "medium",
    "supported_reasoning_levels": [
     {
+     "effort": "minimal",
+     "description": "Minimal reasoning for simple tasks"
+    },
+    {
      "effort": "low",
      "description": "Fast responses with lighter reasoning"
     },
@@ -592,6 +598,10 @@
    "base_instructions": "You are Codex, an agentic coding assistant. Follow the user's instructions and all applicable AGENTS.md guidance. Use the provided tools to inspect, edit, and test the workspace, and continue until the requested task is genuinely complete.",
    "default_reasoning_level": "medium",
    "supported_reasoning_levels": [
+    {
+     "effort": "minimal",
+     "description": "Minimal reasoning for simple tasks"
+    },
     {
      "effort": "low",
      "description": "Fast responses with lighter reasoning"
@@ -643,6 +653,10 @@
    "default_reasoning_level": "medium",
    "supported_reasoning_levels": [
     {
+     "effort": "minimal",
+     "description": "Minimal reasoning for simple tasks"
+    },
+    {
      "effort": "low",
      "description": "Fast responses with lighter reasoning"
     },
@@ -692,6 +706,10 @@
    "base_instructions": "You are Codex, an agentic coding assistant. Follow the user's instructions and all applicable AGENTS.md guidance. Use the provided tools to inspect, edit, and test the workspace, and continue until the requested task is genuinely complete.",
    "default_reasoning_level": "medium",
    "supported_reasoning_levels": [
+    {
+     "effort": "minimal",
+     "description": "Minimal reasoning for simple tasks"
+    },
     {
      "effort": "low",
      "description": "Fast responses with lighter reasoning"

@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-REPO="pbarham/codex-swapper"
+REPO="Pabce/codex-swapper"
 PINNED_CLI="0.148.0-alpha.15"
 PINNED_APP="26.814.41407"  # informational; mismatch is a warning not a hard error
 
