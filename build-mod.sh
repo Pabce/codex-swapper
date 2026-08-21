@@ -26,7 +26,20 @@ APP_HOST="/Applications/ChatGPT.app/Contents/Resources/codex-code-mode-host"
 
 # If we are on a machine without the fork checkout (e.g. CI or colleague's
 # --from-source), clone upstream at the pinned tag and apply mod.patch.
-PINNED_TAG="rust-v0.148.0-alpha.21"
+# The pinned tag lives in MOD_STATUS.md ("- Upstream tag: rust-v<version>"),
+# which update-mod.sh rewrites on every re-pin — single source of truth, so a
+# re-pin can never leave CI building a stale base. Override with
+# PINNED_TAG=... for one-off builds against something else.
+STATUS="$PROJECT/MOD_STATUS.md"
+PINNED_TAG="${PINNED_TAG:-$(awk 'match($0, /rust-v[A-Za-z0-9._-]+/) { print substr($0, RSTART, RLENGTH); exit }' "$STATUS" 2>/dev/null || true)}"
+case "$PINNED_TAG" in
+  rust-v*) : ;;
+  *)
+    echo "error: could not resolve the pinned upstream tag from $STATUS." >&2
+    echo "  expected a line like '- Upstream tag: rust-v<version>' (or pass PINNED_TAG=...)." >&2
+    exit 1
+    ;;
+esac
 if [ ! -d "$WS" ]; then
   echo "codex-rs checkout not found — cloning openai/codex at $PINNED_TAG..."
   mkdir -p "$(dirname "$WS")"
