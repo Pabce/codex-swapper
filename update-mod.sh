@@ -84,10 +84,19 @@ git --no-pager log --oneline --reverse "$OLD_TAG..HEAD" | sed 's/^/  /'
 git fetch "$REMOTE" tag "$TAG"
 NEW_BRANCH="mod-$NEW_VERSION"
 if git show-ref --verify --quiet "refs/heads/$NEW_BRANCH"; then
-  echo "error: branch $NEW_BRANCH already exists; delete it first (git branch -D $NEW_BRANCH)" >&2
-  exit 1
+  CUR_BRANCH="$(git branch --show-current)"
+  if [ "$NEW_BRANCH" != "$CUR_BRANCH" ]; then
+    echo "error: branch $NEW_BRANCH already exists and is not checked out." >&2
+    echo "  If it is stale: git branch -D $NEW_BRANCH" >&2
+    echo "  If it holds work: commit/push it, or git checkout $NEW_BRANCH first." >&2
+    exit 1
+  fi
+  # Same-version re-run: we are about to reset this very branch to the tag and
+  # replay the recorded commits (captured below from the current HEAD), so the
+  # old tip stays recoverable via reflog even if the replay fails.
+  echo "branch $NEW_BRANCH already exists and is current — resetting to $TAG for replay"
 fi
-git checkout -b "$NEW_BRANCH" "$TAG"
+git checkout -B "$NEW_BRANCH" "$TAG"
 if ! git cherry-pick $MOD_COMMITS; then
   echo "error: cherry-pick conflicted. Resolve conflicts, 'git cherry-pick --continue'," >&2
   echo "then rerun the build manually (or re-run this script after committing)." >&2
