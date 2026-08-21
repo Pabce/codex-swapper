@@ -1,16 +1,43 @@
 # MOD_STATUS — codex-swapper mod pinned state
 
-Last updated: 2026-08-21 (re-pin to 0.148.0-alpha.21)
+Last updated: 2026-08-22 (re-pin to 0.149.0-alpha.4; M5 is now the main dev machine)
 
 ## Pinned release
-- App build: bundled CLI updated by app auto-update on 2026-08-20/21
-- Bundled CLI (app Resources/codex): 0.148.0-alpha.21
-- Upstream tag: rust-v0.148.0-alpha.21
-- Fork branch: mod-0.148.0-alpha.21
-- Mod commits replayed: 9 of 10 (fd0812088 dropped as obsolete, see below);
-  tip d68f75f2c; base = rust-v0.148.0-alpha.21
+- App build: 26.818.31338
+- Bundled CLI (app Resources/codex): 0.149.0-alpha.4
+- Upstream tag: rust-v0.149.0-alpha.4
+- Fork branch: mod-0.149.0-alpha.4
+- Mod commits replayed: 9 of 10 (the "refresh Cargo.lock" commit dropped as
+  empty — lock is regenerated from the alpha.4 base at build time);
+  base = rust-v0.149.0-alpha.4
 
-### alpha.15 -> alpha.21 re-pin notes (2026-08-21)
+### alpha.21 -> alpha.4 (0.149) re-pin notes (2026-08-22)
+- Machine move: the fork checkout on this M5 was gutted (no .git, no sources);
+  restored by cloning over Tailscale SSH from the M1 hub
+  (`git clone m1hub:/Users/pbarham/opt/codex-swapper/codex-rs codex-rs`),
+  then `origin` re-pointed to https://github.com/openai/codex.git. The M1 copy
+  was a SHALLOW clone (depth 1); unshallowed from GitHub on the M5
+  (`git fetch origin main --unshallow`). Keep it full here.
+- Cargo.lock conflicts in every re-pin: resolve with `git checkout --ours`
+  (keep the NEW upstream lock; cargo regenerates mod deltas during build).
+- core/src/client.rs conflict (failover arm): upstream refactored the plain
+  401 arm to `provider.is_recoverable_auth_error(&t)` and added a new
+  `&mut provider_auth_recovery_attempted` argument to `handle_unauthorized`.
+  Resolution: keep the swapper usage-exhaustion arm (401/402/403/429 ->
+  flip_opencode_go_key -> retry once) FIRST, adapted to pass the new arg,
+  followed by upstream's `is_recoverable_auth_error` arm unchanged.
+- target/ lives at ~/.cache/codex-swapper/target (build-mod.sh fallback);
+  symlinked codex-rs/codex-rs/target -> there so smoke/launch scripts and
+  update-mod.sh find release/codex at the conventional path.
+- Upstream grew ModelInfo between alphas; 12 core/tests/suite literals lacked
+  the mod's request_non_streaming field -> added `request_non_streaming: false`
+  next to supports_namespace_tools in 8 suite files (mod commit ac92ad4e84).
+- Verified on the rebuilt alpha.4 binary: tier2_stdio_smoke.py RESULT: OK;
+  bare Luna -> openai, merged model/list intact;
+  cargo test -p codex-core --lib -- client::tests: 19 passed, 0 failed.
+
+### Previous pin (0.148.0-alpha.21, re-pinned 2026-08-21)
+
 - fd0812088 ("tolerate missing supports_parallel_tool_calls") is OBSOLETE:
   upstream deleted the ModelInfo field entirely between alphas (moved to
   tool-handler level in spec_plan). Resolved by taking upstream side; commit
