@@ -40,7 +40,12 @@ if [ -n "${NORD_SOCKS_USER:-}" ] && [ -n "${NORD_SOCKS_PASS:-}" ]; then
   export US_SOCKS5_USER="$NORD_SOCKS_USER"
   export US_SOCKS5_PASS="$NORD_SOCKS_PASS"
 fi
-nohup python3 "$PROXY_SCRIPT" "$PORT" >> "$LOG" 2>&1 &
+# Detach into a new session/process group so the proxy survives the launching
+# shell (and tool-session cleanup that kills the caller's process group);
+# nohup+disown alone was not enough when launched from Codex sessions.
+# macOS has no setsid(1), so use python's os.setsid + exec.
+python3 -c 'import os, sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' \
+  python3 "$PROXY_SCRIPT" "$PORT" >> "$LOG" 2>&1 &
 disown || true
 sleep 1
 if curl -s -m 2 -o /dev/null "http://127.0.0.1:$PORT/healthcheck"; then

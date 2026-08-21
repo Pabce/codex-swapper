@@ -175,6 +175,12 @@ OpenAI row highlighted in the picker until the user re-selects the namespaced
 `opencode-go/gpt-5.6-luna` entry. The thread still runs correctly; the stored
 `model_provider` is independent of the slug.
 
+Follow-up fix (commit `c097e783f`, 2026-08-20): provider inference must preserve
+the same active-provider ownership used by the merged picker. Before searching
+custom catalogs for a bare slug, the resolver now checks the active catalog
+(`models_cache.json` for OpenAI). Thus bare `gpt-5.6-luna` stays on OpenAI,
+while `opencode-go/gpt-5.6-luna` continues to resolve explicitly to OpenCode Go.
+
 ### B5. OpenCode Go key failover on usage exhaustion (DONE, 2026-08-19)
 
 Two OpenCode Go subscriptions are held in the login Keychain (`opencode-go` and
@@ -436,3 +442,8 @@ Operational notes:
 - Desktop app is not wired to the proxy by default; add
   `[model_providers.opencode-go-us]` to config.toml to expose it in the picker
   later if wanted.
+- Proxy request bodies go via curl stdin (`--data-binary @-`), not `-d <body>`
+  argv: large conversation contexts previously blew past macOS ARG_MAX and the
+  handler died mid-request ("stream disconnected", see MOD_STATUS incident
+  2026-08-20). The proxy buffers the full upstream response, so curl
+  max-time is 600s to cover long turns.

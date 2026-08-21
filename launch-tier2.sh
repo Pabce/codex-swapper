@@ -2,10 +2,10 @@
 # Tier 2 launcher: stock ChatGPT.app + modded codex harness, using the real
 # ~/.codex home so your existing projects, sessions, and config all show up.
 #
-# We launch via `open` (so the GUI app is properly detached from this shell),
-# and forward the env through `launchctl setenv` because `open` does not pass
-# arbitrary env vars to the app. The vars are unset again afterward so they do
-# not leak into every later GUI app.
+# We launch via `open` (so the GUI app is properly detached from this shell)
+# and use its process-scoped `--env` arguments. This keeps the mod wiring on
+# this one ChatGPT launch instead of briefly changing the GUI login session's
+# global launchctl environment.
 #
 # Important: the desktop app is single-instance. If it is already running,
 # `open` will just activate the existing process without these env vars. Quit
@@ -64,17 +64,24 @@ if [ ! -x "$MODDED_CODE_MODE_HOST" ] && [ -x "$STOCK_CODE_MODE_HOST" ]; then
   echo "copied stock codex-code-mode-host next to modded binary"
 fi
 
-echo "launching $APP_NAME via open with:"
+echo "launching $APP_NAME with process-scoped environment:"
 echo "  CODEX_CLI_PATH=$MODDED_CODEX"
 echo "  CODEX_HOME=$MOD_HOME"
 
-launchctl setenv CODEX_CLI_PATH "$MODDED_CODEX"
-launchctl setenv CODEX_HOME "$MOD_HOME"
-open -a "$APP_NAME"
-# Give LaunchServices time to spawn the app before clearing the env.
-sleep 3
-launchctl unsetenv CODEX_CLI_PATH
-launchctl unsetenv CODEX_HOME
+OPEN_ARGS=(
+  -a "$APP_NAME"
+  --env "CODEX_CLI_PATH=$MODDED_CODEX"
+  --env "CODEX_HOME=$MOD_HOME"
+)
+if [ "${CODEX_SWAPPER_DRY_RUN:-0}" = "1" ]; then
+  printf 'dry run:'
+  printf ' %q' /usr/bin/open "${OPEN_ARGS[@]}"
+  printf '\n'
+  echo "dry run complete; ChatGPT was not opened."
+  exit 0
+else
+  /usr/bin/open "${OPEN_ARGS[@]}"
+fi
 
 echo
 echo "launched. If the app was already running, this only activated it without"

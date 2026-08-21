@@ -146,6 +146,29 @@ def main() -> int:
     print("THREAD/START(namespaced) model:", result_luna.get("model"))
     print("THREAD/START(namespaced) modelProvider:", result_luna.get("modelProvider"))
 
+    send(
+        {
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "thread/start",
+            "params": {
+                "model": "gpt-5.6-luna",
+                "modelProvider": None,
+                "cwd": "/Users/pbarham/opt/codex-swapper",
+                "sandbox": "read-only",
+                "approvalPolicy": "never",
+                "allowProviderModelFallback": False,
+            },
+        }
+    )
+    started_openai_luna = wait_for(5)
+    result_openai_luna = started_openai_luna.get("result", {})
+    print("THREAD/START(bare Luna) model:", result_openai_luna.get("model"))
+    print(
+        "THREAD/START(bare Luna) modelProvider:",
+        result_openai_luna.get("modelProvider"),
+    )
+
     proc.stdin.close()
     try:
         proc.wait(timeout=10)
@@ -165,6 +188,8 @@ def main() -> int:
         and luna_ids == {"gpt-5.6-luna", "opencode-go/gpt-5.6-luna"}
         and result_luna.get("model") == "opencode-go/gpt-5.6-luna"
         and result_luna.get("modelProvider") == "opencode-go"
+        and result_openai_luna.get("model") == "gpt-5.6-luna"
+        and result_openai_luna.get("modelProvider") == "openai"
         and any(
             m.get("model") == "opencode-go/gpt-5.6-luna"
             and {

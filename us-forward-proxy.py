@@ -61,7 +61,9 @@ def model_uses_us(model: str) -> bool:
 
 
 def curl_cmd(use_us: bool):
-    cmd = ["curl", "-sS", "-m", "90", "-X", "POST"]
+    # The whole upstream response is buffered through this proxy, so the
+    # max-time must cover real long turns (90s killed long muse turns).
+    cmd = ["curl", "-sS", "-m", "600", "-X", "POST"]
     if use_us and SOCKS:
         cmd += ["--socks5-hostname", SOCKS]
         if USR and PWD:
@@ -93,19 +95,25 @@ class H(http.server.BaseHTTPRequestHandler):
         print(f"us-forward-proxy: {model or '<unknown>'} -> "
               f"{'US exit' if use_us else 'direct'}", flush=True)
         # Forward with the original auth header; drop hop-by-hop headers.
+        # The body goes via stdin (--data-binary @-): passing it as a
+        # command-line -d argument blew past macOS ARG_MAX (1 MiB) for large
+        # conversation contexts, crashing the handler mid-request
+        # ("Argument list too long", client saw 'stream disconnected').
         out = subprocess.run(
             curl_cmd(use_us)
             + ["-H", "Authorization: %s" % self.headers.get("Authorization", ""),
                "-H", "Content-Type: application/json",
-               "-d", body.decode(errors="replace"),
+               "--data-binary", "@-",
                TARGET + fwd_path],
-            capture_output=True, text=True, timeout=100)
+            input=body,
+            capture_output=True, timeout=610)
         if out.returncode != 0:
             self.send_response(502)
-            payload = ("proxy error: " + out.stderr[:300]).encode()
+            payload = ("proxy error: "
+                       + out.stderr.decode(errors="replace")[:300]).encode()
         else:
             self.send_response(200)
-            payload = out.stdout.encode()
+            payload = out.stdout
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
