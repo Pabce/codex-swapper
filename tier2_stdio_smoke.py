@@ -12,8 +12,13 @@ import subprocess
 import sys
 import threading
 
-BIN = "/Users/pbarham/opt/codex-swapper/codex-rs/codex-rs/target/release/codex"
-CODEX_HOME = "/Users/pbarham/opt/codex-swapper/codex-mod-home"
+BIN = str(
+    __import__("pathlib").Path(__file__).resolve().parent
+    / "codex-rs/codex-rs/target/release/codex"
+)
+CODEX_HOME = str(
+    __import__("pathlib").Path(__file__).resolve().parent / "codex-mod-home"
+)
 
 
 def main() -> int:

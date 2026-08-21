@@ -123,6 +123,12 @@ echo "=== building release (codegen-units=32, lto=off, incremental=1, sccache=${
 cargo build --release -p codex-cli
 # copy host next to the produced binary (honours CARGO_TARGET_DIR)
 _target="${CARGO_TARGET_DIR:-$WS/target}"
-cp "$APP_HOST" "$_target/release/codex-code-mode-host"
-echo "code-mode host refreshed"
+if [ -f "$APP_HOST" ]; then
+  cp "$APP_HOST" "$_target/release/codex-code-mode-host"
+  echo "code-mode host refreshed"
+else
+  # No ChatGPT.app bundle (CI runner, --from-source elsewhere): skip. The
+  # release staging step falls back gracefully and install.sh copes without.
+  echo "code-mode host source not found ($APP_HOST) — skipping refresh"
+fi
 echo "=== DONE ==="
