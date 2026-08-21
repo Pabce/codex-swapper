@@ -69,8 +69,8 @@ jobs:
       - name: Unit tests (client + models)
         run: |
           set -euo pipefail
-          cargo test -p codex-core --lib client_tests -- --nocapture 2>&1 | tail -n 40
-          cargo test -p codex-models-manager --lib manager_tests -- --nocapture 2>&1 | tail -n 40
+          cargo test -p codex-core --lib client::tests -- --nocapture 2>&1 | tail -n 40
+          cargo test -p codex-models-manager --lib manager::tests -- --nocapture 2>&1 | tail -n 40
         working-directory: codex-rs/codex-rs
 
       - name: Stage Release asset

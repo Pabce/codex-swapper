@@ -26,7 +26,7 @@ APP_HOST="/Applications/ChatGPT.app/Contents/Resources/codex-code-mode-host"
 
 # If we are on a machine without the fork checkout (e.g. CI or colleague's
 # --from-source), clone upstream at the pinned tag and apply mod.patch.
-PINNED_TAG="rust-v0.148.0-alpha.15"
+PINNED_TAG="rust-v0.148.0-alpha.21"
 if [ ! -d "$WS" ]; then
   echo "codex-rs checkout not found — cloning openai/codex at $PINNED_TAG..."
   mkdir -p "$(dirname "$WS")"
