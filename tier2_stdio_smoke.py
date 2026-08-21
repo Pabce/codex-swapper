@@ -7,24 +7,29 @@ or touching the currently-running daily app.
 """
 import json
 import os
+import pathlib
 import select
 import subprocess
 import sys
 import threading
 
-BIN = str(
-    __import__("pathlib").Path(__file__).resolve().parent
-    / "codex-rs/codex-rs/target/release/codex"
-)
-CODEX_HOME = str(
-    __import__("pathlib").Path(__file__).resolve().parent / "codex-mod-home"
-)
+_ROOT = pathlib.Path(__file__).resolve().parent
+BIN = str(_ROOT / "codex-rs/codex-rs/target/release/codex")
+CODEX_HOME = str(_ROOT / "codex-mod-home")
 
 
 def main() -> int:
     env = dict(os.environ)
     env["CODEX_HOME"] = CODEX_HOME
     env.setdefault("RUST_LOG", "warn")
+
+    # codex hard-exits when CODEX_HOME does not exist (fresh CI checkout:
+    # codex-mod-home/ is gitignored), so bootstrap a minimal home.
+    home = pathlib.Path(CODEX_HOME)
+    home.mkdir(parents=True, exist_ok=True)
+    cfg = home / "config.toml"
+    if not cfg.exists():
+        cfg.write_text("# minimal smoke-test CODEX_HOME\n")
 
     proc = subprocess.Popen(
         [BIN, "app-server", "--stdio"],
@@ -118,7 +123,7 @@ def main() -> int:
             "params": {
                 "model": "deepseek-v4-flash",
                 "modelProvider": None,
-                "cwd": "/Users/pbarham/opt/codex-swapper",
+                "cwd": str(_ROOT),
                 "sandbox": "read-only",
                 "approvalPolicy": "never",
                 "allowProviderModelFallback": False,
@@ -139,7 +144,7 @@ def main() -> int:
             "params": {
                 "model": "opencode-go/gpt-5.6-luna",
                 "modelProvider": None,
-                "cwd": "/Users/pbarham/opt/codex-swapper",
+                "cwd": str(_ROOT),
                 "sandbox": "read-only",
                 "approvalPolicy": "never",
                 "allowProviderModelFallback": False,
@@ -159,7 +164,7 @@ def main() -> int:
             "params": {
                 "model": "gpt-5.6-luna",
                 "modelProvider": None,
-                "cwd": "/Users/pbarham/opt/codex-swapper",
+                "cwd": str(_ROOT),
                 "sandbox": "read-only",
                 "approvalPolicy": "never",
                 "allowProviderModelFallback": False,
