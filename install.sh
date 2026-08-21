@@ -50,6 +50,8 @@ CONFIG="$CODEX_HOME/config.toml"
 PROXY_ENV_DIR="$HOME/.config/codex-swapper"
 PROXY_ENV="$PROXY_ENV_DIR/us-proxy.env"
 LOCAL_BIN="$HOME/.local/bin"
+SHARE_DIR="$HOME/.local/share/codex-swapper"
+LAUNCHER_BUNDLE_ID="dev.pbarham.codex-swapper.launcher"
 
 say() { printf "\033[1m%s\033[0m\n" "$*"; }
 warn() { printf "\033[33mwarning: %s\033[0m\n" "$*" >&2; }
@@ -106,6 +108,21 @@ doctor() {
     echo "info Keychain opencode-go-alt ($USER) — optional second key for failover"
   fi
   if [ -f "$PROXY_ENV" ]; then echo "ok  $PROXY_ENV"; else echo "info $PROXY_ENV — only for muse-spark-1.2-contributor US egress"; fi
+  local launcher_app=""
+  for candidate in "/Applications/Codex Swapper.app" "$HOME/Applications/Codex Swapper.app"; do
+    if [ -d "$candidate" ]; then launcher_app="$candidate"; break; fi
+  done
+  if [ -n "$launcher_app" ]; then
+    local launcher_id
+    launcher_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$launcher_app/Contents/Info.plist" 2>/dev/null || true)"
+    if [ "$launcher_id" = "$LAUNCHER_BUNDLE_ID" ] && /usr/bin/codesign --verify --deep --strict "$launcher_app" 2>/dev/null; then
+      echo "ok  $launcher_app ($launcher_id)"
+    else
+      warn "launcher app failed identity/signature check: $launcher_app"
+    fi
+  else
+    echo "miss Codex Swapper.app launcher"
+  fi
   # quick merged-list smoke if binary exists
   if [ -n "$modbin" ] && [ -x "$modbin" ]; then
     echo "smoke: merged model/list via stdio harness..."
@@ -139,6 +156,17 @@ PY
   rm -f "$CATALOG_DIR/opencode-go.json" "$CATALOG_DIR/opencode-go-us.json" "$CATALOG_DIR/opencode-go-us-contributor.json" "$CATALOG_DIR/opencode-go-us-cli.json"
   rm -f "$BIN_DIR/oc-go-key" "$BIN_DIR/oc-usage"
   rm -f "$LOCAL_BIN/codex-mod" "$LOCAL_BIN/codex-mod-us"
+  for launcher_app in "/Applications/Codex Swapper.app" "$HOME/Applications/Codex Swapper.app"; do
+    if [ -d "$launcher_app" ]; then
+      launcher_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$launcher_app/Contents/Info.plist" 2>/dev/null || true)"
+      if [ "$launcher_id" = "$LAUNCHER_BUNDLE_ID" ]; then
+        rm -rf "$launcher_app"
+        echo "removed $launcher_app"
+      else
+        warn "kept unexpected app at $launcher_app (bundle id: ${launcher_id:-unknown})"
+      fi
+    fi
+  done
   echo "kept: $CODEX_HOME history/sessions; $PROXY_ENV (if you want it: rm $PROXY_ENV)"
   say "uninstall done — quit ChatGPT and reopen it normally to use stock codex."
   exit 0
@@ -386,6 +414,30 @@ refresh_interval_ms = 300000
 """)
     print(f"wrote {profile}")
 
+# Ensure CLI opengo profile file exists for `codex exec --profile opengo -m <slug>`
+# Ships the full gateway catalog (per-model flags like ox-alpha-free's
+# request_non_streaming) without touching the default ChatGPT provider.
+opengo_profile = pathlib.Path(os.path.expanduser("~/.codex/opengo.config.toml"))
+if not opengo_profile.exists():
+    opengo_profile.write_text(f"""# OpenCode Go — full-catalog profile (all gateway models, incl. ox-alpha-free).
+# Usage: codex-mod exec --profile opengo -m <slug> "..."
+model_provider = "opencode-go"
+model_catalog_json = "{os.path.expanduser("~/.codex/model-catalogs/opencode-go.json")}"
+web_search = "live"
+
+[model_providers.opencode-go]
+name = "OpenCode Go"
+base_url = "https://opencode.ai/zen/go/v1"
+wire_api = "responses"
+supports_websockets = false
+
+[model_providers.opencode-go.auth]
+command = "{os.path.expanduser("~/.codex/bin/oc-go-key")}"
+timeout_ms = 5000
+refresh_interval_ms = 300000
+""")
+    print(f"wrote {opengo_profile}")
+
 if changed:
     p.write_text(t)
     print(f"patched {p}")
@@ -425,25 +477,40 @@ if [ -n "${SRCROOT:-}" ]; then
 fi
 # Also install them to ~/.local/share for curl|bash users who want the app launcher
 if [ -n "${SRCROOT:-}" ] && [ -f "$SRCROOT/launch-tier2.sh" ]; then
-  mkdir -p "$HOME/.local/share/codex-swapper"
-  cp -p "$SRCROOT/launch-tier2.sh" "$HOME/.local/share/codex-swapper/launch-tier2.sh"
-  cp -p "$SRCROOT/launch-us-proxy.sh" "$HOME/.local/share/codex-swapper/launch-us-proxy.sh" 2>/dev/null || true
-  cp -p "$SRCROOT/us-forward-proxy.py" "$HOME/.local/share/codex-swapper/us-forward-proxy.py" 2>/dev/null || true
+  mkdir -p "$SHARE_DIR/launcher"
+  cp -p "$SRCROOT/launch-tier2.sh" "$SHARE_DIR/launch-tier2.sh"
+  cp -p "$SRCROOT/launch-us-proxy.sh" "$SHARE_DIR/launch-us-proxy.sh" 2>/dev/null || true
+  cp -p "$SRCROOT/us-forward-proxy.py" "$SHARE_DIR/us-forward-proxy.py" 2>/dev/null || true
+  cp -p "$SRCROOT/scripts/install-launcher-app.sh" "$SHARE_DIR/install-launcher-app.sh"
+  cp -p "$SRCROOT/launcher/CodexSwapperLauncher.swift" "$SHARE_DIR/launcher/CodexSwapperLauncher.swift"
+  cp -p "$SRCROOT/launcher/Info.plist" "$SHARE_DIR/launcher/Info.plist"
   # codex-swapper CLI (portable)
   if [ -f "$SRCROOT/codex-swapper" ]; then
     install -m 755 "$SRCROOT/codex-swapper" "$LOCAL_BIN/codex-swapper"
-    cp -p "$SRCROOT/codex-swapper" "$HOME/.local/share/codex-swapper/codex-swapper" 2>/dev/null || true
-    cp -p "$SRCROOT/MOD_STATUS.md" "$HOME/.local/share/codex-swapper/MOD_STATUS.md" 2>/dev/null || true
+    cp -p "$SRCROOT/codex-swapper" "$SHARE_DIR/codex-swapper" 2>/dev/null || true
+    cp -p "$SRCROOT/MOD_STATUS.md" "$SHARE_DIR/MOD_STATUS.md" 2>/dev/null || true
   fi
 else
-  mkdir -p "$HOME/.local/share/codex-swapper"
-  curl -fsSL -o "$HOME/.local/share/codex-swapper/launch-tier2.sh" "https://raw.githubusercontent.com/$REPO/main/launch-tier2.sh" 2>/dev/null || true
-  curl -fsSL -o "$HOME/.local/share/codex-swapper/launch-us-proxy.sh" "https://raw.githubusercontent.com/$REPO/main/launch-us-proxy.sh" 2>/dev/null || true
-  curl -fsSL -o "$HOME/.local/share/codex-swapper/us-forward-proxy.py" "https://raw.githubusercontent.com/$REPO/main/us-forward-proxy.py" 2>/dev/null || true
-  curl -fsSL -o "$HOME/.local/share/codex-swapper/codex-swapper" "https://raw.githubusercontent.com/$REPO/main/codex-swapper" 2>/dev/null || true
+  mkdir -p "$SHARE_DIR/launcher"
+  curl -fsSL -o "$SHARE_DIR/launch-tier2.sh" "https://raw.githubusercontent.com/$REPO/main/launch-tier2.sh" 2>/dev/null || true
+  curl -fsSL -o "$SHARE_DIR/launch-us-proxy.sh" "https://raw.githubusercontent.com/$REPO/main/launch-us-proxy.sh" 2>/dev/null || true
+  curl -fsSL -o "$SHARE_DIR/us-forward-proxy.py" "https://raw.githubusercontent.com/$REPO/main/us-forward-proxy.py" 2>/dev/null || true
+  curl -fsSL -o "$SHARE_DIR/codex-swapper" "https://raw.githubusercontent.com/$REPO/main/codex-swapper" 2>/dev/null || true
   curl -fsSL -o "$LOCAL_BIN/codex-swapper" "https://raw.githubusercontent.com/$REPO/main/codex-swapper" 2>/dev/null || true
-  curl -fsSL -o "$HOME/.local/share/codex-swapper/MOD_STATUS.md" "https://raw.githubusercontent.com/$REPO/main/MOD_STATUS.md" 2>/dev/null || true
-  chmod +x "$HOME/.local/share/codex-swapper/launch-tier2.sh" "$HOME/.local/share/codex-swapper/launch-us-proxy.sh" "$HOME/.local/share/codex-swapper/codex-swapper" "$LOCAL_BIN/codex-swapper" 2>/dev/null || true
+  curl -fsSL -o "$SHARE_DIR/MOD_STATUS.md" "https://raw.githubusercontent.com/$REPO/main/MOD_STATUS.md" 2>/dev/null || true
+  curl -fsSL -o "$SHARE_DIR/install-launcher-app.sh" "https://raw.githubusercontent.com/$REPO/main/scripts/install-launcher-app.sh" 2>/dev/null || true
+  curl -fsSL -o "$SHARE_DIR/launcher/CodexSwapperLauncher.swift" "https://raw.githubusercontent.com/$REPO/main/launcher/CodexSwapperLauncher.swift" 2>/dev/null || true
+  curl -fsSL -o "$SHARE_DIR/launcher/Info.plist" "https://raw.githubusercontent.com/$REPO/main/launcher/Info.plist" 2>/dev/null || true
+fi
+chmod +x "$SHARE_DIR/launch-tier2.sh" "$SHARE_DIR/launch-us-proxy.sh" "$SHARE_DIR/codex-swapper" "$SHARE_DIR/install-launcher-app.sh" "$LOCAL_BIN/codex-swapper" 2>/dev/null || true
+
+# Build a tiny local launcher app with its own bundle id and icon. The OpenAI
+# ChatGPT.app bundle remains untouched and keeps its original signature.
+if [ -x "$SHARE_DIR/install-launcher-app.sh" ]; then
+  say "installing clickable Codex Swapper.app launcher"
+  "$SHARE_DIR/install-launcher-app.sh" || warn "launcher app installation failed; command-line launching still works"
+else
+  warn "launcher app installer is missing; command-line launching still works"
 fi
 
 # --- US proxy env template ---
@@ -476,6 +543,7 @@ Next steps:
        # security add-generic-password -a $USER -s opencode-go-alt -w 'sk-...'
 
   2. Launch the modded desktop app:
+       open -a "Codex Swapper"       # separate clickable launcher app
        # quit ChatGPT first, then:
        codex-swapper launch         # works from checkout or curl|bash install
        # or directly:

@@ -1,8 +1,8 @@
 From 82f043fe35ee29f0079ea4dd47761420024dce89 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
 Date: Wed, 19 Aug 2026 10:12:33 +0200
-Subject: [PATCH 1/7] codex-swapper mod: merged provider catalogs + per-thread
- provider resolution (0.148.0-alpha.15)
+Subject: [PATCH 01/10] codex-swapper mod: merged provider catalogs +
+ per-thread provider resolution (0.148.0-alpha.15)
 
 ---
  codex-rs/Cargo.lock                           | 280 +++++++++---------
@@ -1681,8 +1681,8 @@ index 42b14e340..b5d6d8f07 100644
 From ae73264073b70f506c96410f133a82c3b1155ca1 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
 Date: Wed, 19 Aug 2026 11:43:47 +0200
-Subject: [PATCH 2/7] codex-swapper mod: disambiguate colliding provider model
- ids in the picker
+Subject: [PATCH 02/10] codex-swapper mod: disambiguate colliding provider
+ model ids in the picker
 
 The desktop picker keys selection on the model slug, so two catalog entries
 with the same slug (e.g. OpenAI's gpt-5.6-luna and opencode-go's
@@ -2010,7 +2010,7 @@ index 0768d1e4c..3ba24a1e6 100644
 From 647bbf0a26fd9f026a3736fa123883b382b6695e Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
 Date: Wed, 19 Aug 2026 15:36:34 +0200
-Subject: [PATCH 3/7] codex-swapper mod: OpenCode Go key failover on usage
+Subject: [PATCH 03/10] codex-swapper mod: OpenCode Go key failover on usage
  exhaustion
 
 When the opencode-go gateway rejects a request with 401/402/403/429, rotate
@@ -2219,7 +2219,7 @@ index b0f521979..86b8e61cd 100644
 From 1efb81f15de608575b3fd89f255fecf4a45f2a9b Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
 Date: Wed, 19 Aug 2026 16:53:44 +0200
-Subject: [PATCH 4/7] codex-swapper mod: omit client_metadata for non-OpenAI
+Subject: [PATCH 04/10] codex-swapper mod: omit client_metadata for non-OpenAI
  providers + gate hosted web_search on model support
 
 - core/src/client.rs: only attach Responses API client_metadata for the OpenAI
@@ -2329,7 +2329,7 @@ index e094213a2..db5d9e30b 100644
 From 489022aa9e08cdebdc452485bbae126ba21fda13 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
 Date: Wed, 19 Aug 2026 17:22:21 +0200
-Subject: [PATCH 5/7] codex-swapper mod: per-model supports_namespace_tools
+Subject: [PATCH 05/10] codex-swapper mod: per-model supports_namespace_tools
  flag (grok-4.5 on opencode-go rejects namespace tools)
 
 - protocol/src/openai_models.rs: add ModelInfo.supports_namespace_tools (default true)
@@ -2579,7 +2579,7 @@ index 49b8bee71..476fa71ba 100644
 From 6e11e883a3dc83be69cfd0c79075d693ee189eab Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
 Date: Wed, 19 Aug 2026 18:24:49 +0200
-Subject: [PATCH 6/7] codex-swapper mod: keep OpenCode Go key failover armed
+Subject: [PATCH 06/10] codex-swapper mod: keep OpenCode Go key failover armed
  when provider is routed via the US-forwarding loopback proxy
 
 ---
@@ -2647,8 +2647,8 @@ index 82e84f188..db4db3265 100644
 From 308ff33a0d597f1aec0515d2656722d60642528b Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
 Date: Wed, 19 Aug 2026 23:57:26 +0200
-Subject: [PATCH 7/7] codex-swapper mod: match the OpenCode Go provider family
- (incl. 'OpenCode Go US') for loopback failover arming
+Subject: [PATCH 07/10] codex-swapper mod: match the OpenCode Go provider
+ family (incl. 'OpenCode Go US') for loopback failover arming
 
 ---
  codex-rs/core/src/client.rs       |  4 +++-
@@ -2691,6 +2691,540 @@ index db4db3265..72e11f4ee 100644
      let loopback_with_wrong_name = create_model_provider(
          ModelProviderInfo {
              name: "Some Other Gateway".into(),
+-- 
+2.54.0
+
+
+From c097e783f9b29520a339f77424d1937258e17831 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
+Date: Thu, 20 Aug 2026 15:34:03 +0200
+Subject: [PATCH 08/10] codex-swapper mod: keep bare colliding models on active
+ provider
+
+---
+ codex-rs/app-server/src/models.rs | 79 +++++++++++++++++++++++++++++++
+ 1 file changed, 79 insertions(+)
+
+diff --git a/codex-rs/app-server/src/models.rs b/codex-rs/app-server/src/models.rs
+index 012da390f..dcdde3c01 100644
+--- a/codex-rs/app-server/src/models.rs
++++ b/codex-rs/app-server/src/models.rs
+@@ -48,6 +48,32 @@ fn load_provider_catalog(
+     serde_json::from_str::<ModelsResponse>(&contents).ok()
+ }
+ 
++/// Return whether the active provider's local catalog already owns `model`.
++///
++/// OpenAI's active catalog is cached at `models_cache.json`; custom active
++/// providers use the same convention-based catalog as the merged picker. A
++/// bare picker slug belongs to the active provider when it appears there.
++/// Without this check, a colliding slug such as `gpt-5.6-luna` is found in the
++/// OpenCode Go catalog and incorrectly rerouted away from OpenAI.
++fn active_provider_contains_model(
++    codex_home: &std::path::Path,
++    active_provider_id: &str,
++    model: &str,
++) -> bool {
++    let path = if active_provider_id == "openai" {
++        codex_home.join("models_cache.json")
++    } else {
++        provider_catalog_path(codex_home, active_provider_id)
++    };
++    let Ok(contents) = std::fs::read_to_string(path) else {
++        return false;
++    };
++    let Ok(catalog) = serde_json::from_str::<ModelsResponse>(&contents) else {
++        return false;
++    };
++    catalog.models.iter().any(|info| info.slug == model)
++}
++
+ /// Return the id of a registered non-active custom provider whose
+ /// convention-based static catalog contains `model`.
+ pub(crate) fn resolve_model_provider(config: &Config, model: &str) -> Option<String> {
+@@ -81,6 +107,13 @@ fn resolve_model_provider_in_catalogs(
+         }
+     }
+ 
++    // The active provider claims bare slugs in `model/list`. Preserve that
++    // ownership during thread routing; custom collisions are emitted with an
++    // explicit provider namespace and are handled above.
++    if active_provider_contains_model(codex_home, active_provider_id, model) {
++        return None;
++    }
++
+     for provider_id in model_providers.keys() {
+         if provider_id == active_provider_id || provider_id == "openai" {
+             continue;
+@@ -264,6 +297,33 @@ mod tests {
+         fs::write(path, serde_json::to_vec(&catalog).unwrap()).unwrap();
+     }
+ 
++    fn write_openai_cache(dir: &std::path::Path, slug: &str) {
++        let catalog = serde_json::json!({
++            "models": [{
++                "slug": slug,
++                "display_name": slug,
++                "base_instructions": "You are a helpful assistant.",
++                "supported_reasoning_levels": [
++                    { "effort": "low", "description": "low" },
++                    { "effort": "high", "description": "high" }
++                ],
++                "shell_type": "shell_command",
++                "visibility": "list",
++                "supported_in_api": true,
++                "priority": 1,
++                "support_verbosity": true,
++                "supports_parallel_tool_calls": true,
++                "truncation_policy": { "mode": "tokens", "limit": 10000 },
++                "experimental_supported_tools": []
++            }]
++        });
++        fs::write(
++            dir.join("models_cache.json"),
++            serde_json::to_vec(&catalog).unwrap(),
++        )
++        .unwrap();
++    }
++
+     #[test]
+     fn provider_catalog_path_uses_codex_home_model_catalogs() {
+         let dir = tempdir().unwrap();
+@@ -370,6 +430,25 @@ mod tests {
+         assert_eq!(resolved.as_deref(), Some("opencode-go"));
+     }
+ 
++    #[test]
++    fn resolve_model_provider_keeps_bare_colliding_model_on_openai() {
++        let dir = tempdir().unwrap();
++        write_openai_cache(dir.path(), "gpt-5.6-luna");
++        write_catalog(dir.path(), "opencode-go", "gpt-5.6-luna");
++
++        let mut providers = HashMap::new();
++        providers.insert("openai".to_string(), ModelProviderInfo::default());
++        providers.insert("opencode-go".to_string(), ModelProviderInfo::default());
++
++        let resolved = resolve_model_provider_in_catalogs(
++            &providers,
++            "openai",
++            dir.path(),
++            "gpt-5.6-luna",
++        );
++        assert_eq!(resolved, None);
++    }
++
+     #[test]
+     fn resolve_model_provider_rejects_invalid_namespaces_and_unknown_suffixes() {
+         let dir = tempdir().unwrap();
+-- 
+2.54.0
+
+
+From fd08120884a60b513534c2425a5a897cab53a66f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
+Date: Fri, 21 Aug 2026 15:45:54 +0200
+Subject: [PATCH 09/10] codex-swapper mod: tolerate upstream models payloads
+ without supports_parallel_tool_calls
+
+OpenAI changed their /models payload mid-day 2026-08-21; fresh
+models_cache.json entries omitted the field and the strict deserializer
+rejected the whole cache ("failed to load models cache"), degrading every
+model to fallback metadata. Default the field like its neighbours.
+
+Co-authored-by: ox-alpha <noreply@anoma.ly>
+---
+ codex-rs/protocol/src/openai_models.rs | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/codex-rs/protocol/src/openai_models.rs b/codex-rs/protocol/src/openai_models.rs
+index a84c9f58d..c7318507b 100644
+--- a/codex-rs/protocol/src/openai_models.rs
++++ b/codex-rs/protocol/src/openai_models.rs
+@@ -420,6 +420,7 @@ pub struct ModelInfo {
+     #[serde(default)]
+     pub web_search_tool_type: WebSearchToolType,
+     pub truncation_policy: TruncationPolicyConfig,
++    #[serde(default)]
+     pub supports_parallel_tool_calls: bool,
+     #[serde(default)]
+     pub supports_image_detail_original: bool,
+-- 
+2.54.0
+
+
+From a0909a00cb335b54d1efb5e647ce3a505dff139b Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
+Date: Fri, 21 Aug 2026 15:46:26 +0200
+Subject: [PATCH 10/10] codex-swapper mod: per-model request_non_streaming +
+ orphan-delta lifecycle synthesis
+
+ox-alpha (stealth preview on the opencode-go gateway) advertises chat
+completions but also serves /responses. Its SSE stream is degenerate on
+both gateway bases: bare response.output_text.delta events with no
+output_item lifecycle and a response.completed whose output array is null,
+so assistant text was dropped ("OutputTextDelta without active item");
+with tools attached only an output_item.added announcement arrives and the
+arguments never stream, making tool calls unusable.
+
+Two fixes:
+- core: synthesize an assistant-message item lifecycle around orphan text
+  deltas as a safety net for any similarly broken upstream.
+- new ModelInfo catalog flag request_non_streaming: POST once without
+  stream and materialize the JSON response into the same event flow
+  (Created -> OutputItemDone* -> Completed with usage). New ResponsesClient
+  send_request performs the plain POST.
+
+Verified end-to-end on ox-alpha-free: text turn and real shell tool-call
+turn both complete with visible output; deepseek-v4-flash regression clean.
+
+Co-authored-by: ox-alpha <noreply@anoma.ly>
+---
+ codex-rs/codex-api/src/endpoint/responses.rs |  56 ++++++
+ codex-rs/core/src/client.rs                  | 177 +++++++++++++++++--
+ codex-rs/models-manager/src/model_info.rs    |   1 +
+ codex-rs/protocol/src/openai_models.rs       |   6 +
+ 4 files changed, 227 insertions(+), 13 deletions(-)
+
+diff --git a/codex-rs/codex-api/src/endpoint/responses.rs b/codex-rs/codex-api/src/endpoint/responses.rs
+index 804f0027f..dcbb3055d 100644
+--- a/codex-rs/codex-api/src/endpoint/responses.rs
++++ b/codex-rs/codex-api/src/endpoint/responses.rs
+@@ -101,6 +101,62 @@ impl<T: HttpTransport> ResponsesClient<T> {
+         "responses"
+     }
+ 
++    /// POST the request and return the full JSON response instead of an SSE
++    /// stream. Used for providers/models that cannot stream reliably.
++    #[instrument(
++        name = "responses.send_request",
++        level = "info",
++        skip_all,
++        fields(
++            transport = "responses_http",
++            http.method = "POST",
++            api.path = "responses"
++        )
++    )]
++    pub async fn send_request(
++        &self,
++        request: ResponsesApiRequest,
++        options: ResponsesOptions,
++    ) -> Result<Value, ApiError> {
++        let ResponsesOptions {
++            session_id,
++            thread_id,
++            session_source,
++            extra_headers,
++            compression,
++            turn_state: _,
++        } = options;
++
++        let mut headers = extra_headers;
++        if let Some(ref thread_id) = thread_id {
++            insert_header(&mut headers, "x-client-request-id", thread_id);
++        }
++        headers.extend(build_session_headers(session_id, thread_id));
++        if let Some(subagent) = subagent_header(&session_source) {
++            insert_header(&mut headers, "x-openai-subagent", &subagent);
++        }
++
++        let compression = match compression {
++            Compression::None => RequestCompression::None,
++            Compression::Zstd => RequestCompression::Zstd,
++        };
++        let body = serde_json::to_value(&request)
++            .map_err(|e| ApiError::Stream(format!("failed to encode responses request: {e}")))?;
++        let response = self
++            .session
++            .execute_with(Method::POST, Self::path(), headers, Some(body), |req| {
++                req.compression = compression;
++            })
++            .await?;
++
++        serde_json::from_slice(&response.body).map_err(|e| {
++            ApiError::Stream(format!(
++                "failed to decode responses body: {e}; body: {}",
++                String::from_utf8_lossy(&response.body)
++            ))
++        })
++    }
++
+     #[instrument(
+         name = "responses.stream",
+         level = "info",
+diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
+index 9d18b0d8b..97e9a5e2a 100644
+--- a/codex-rs/core/src/client.rs
++++ b/codex-rs/core/src/client.rs
+@@ -84,6 +84,7 @@ use codex_protocol::openai_models::ModelInfo;
+ use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
+ use codex_protocol::protocol::InternalSessionSource;
+ use codex_protocol::protocol::SessionSource;
++use codex_protocol::protocol::TokenUsage;
+ use codex_protocol::protocol::W3cTraceContext;
+ use codex_rollout_trace::CompactionTraceContext;
+ use codex_rollout_trace::InferenceTraceAttempt;
+@@ -975,7 +976,7 @@ impl ModelClient {
+             parallel_tool_calls: prompt.parallel_tool_calls && !model_info.use_responses_lite,
+             reasoning: Some(reasoning),
+             store: false,
+-            stream: true,
++            stream: !model_info.request_non_streaming,
+             stream_options,
+             include,
+             service_tier,
+@@ -1564,7 +1565,30 @@ impl ModelClientSession {
+                 client_setup.api_auth,
+             )
+             .with_telemetry(Some(request_telemetry), Some(sse_telemetry));
+-            let stream_result = client.stream_request(request, options).await;
++            // codex-swapper mod: for models flagged request_non_streaming,
++            // POST once and materialize the JSON response into the same event
++            // flow the SSE path produces.
++            let stream_result = if model_info.request_non_streaming {
++                client.send_request(request, options).await.map(|value| {
++                    let (tx_event, rx_event) =
++                        mpsc::channel::<std::result::Result<ResponseEvent, ApiError>>(
++                            RESPONSE_STREAM_CHANNEL_CAPACITY,
++                        );
++                    tokio::spawn(async move {
++                        for event in non_streaming_response_events(value) {
++                            if tx_event.send(event).await.is_err() {
++                                break;
++                            }
++                        }
++                    });
++                    codex_api::ResponseStream {
++                        rx_event,
++                        upstream_request_id: None,
++                    }
++                })
++            } else {
++                client.stream_request(request, options).await
++            };
+ 
+             match stream_result {
+                 Ok(stream) => {
+@@ -1576,17 +1600,16 @@ impl ModelClientSession {
+                     );
+                     return Ok(stream);
+                 }
+-                Err(ApiError::Transport(
+-                    usage_transport @ TransportError::Http { status, .. },
+-                )) if provider_is_opencode_go
+-                    && !key_rotated
+-                    && matches!(
+-                        status,
+-                        StatusCode::UNAUTHORIZED
+-                            | StatusCode::PAYMENT_REQUIRED
+-                            | StatusCode::FORBIDDEN
+-                            | StatusCode::TOO_MANY_REQUESTS
+-                    ) =>
++                Err(ApiError::Transport(usage_transport @ TransportError::Http { status, .. }))
++                    if provider_is_opencode_go
++                        && !key_rotated
++                        && matches!(
++                            status,
++                            StatusCode::UNAUTHORIZED
++                                | StatusCode::PAYMENT_REQUIRED
++                                | StatusCode::FORBIDDEN
++                                | StatusCode::TOO_MANY_REQUESTS
++                        ) =>
+                 {
+                     let response_debug_context = extract_response_debug_context(&usage_transport);
+                     inference_trace_attempt.record_failed(
+@@ -2073,6 +2096,72 @@ fn add_responses_lite_header(headers: &mut ApiHeaderMap, use_responses_lite: boo
+ const RESPONSE_STREAM_CHANNEL_CAPACITY: usize = 1600;
+ const STREAM_DROPPED_REASON: &str = "response stream dropped before provider terminal event";
+ 
++/// codex-swapper mod: convert a non-streaming Responses API JSON body into the
++/// event sequence the SSE path would have produced (Created, one OutputItemDone
++/// per output item, Completed with usage).
++fn non_streaming_response_events(
++    value: serde_json::Value,
++) -> Vec<std::result::Result<ResponseEvent, ApiError>> {
++    const EMPTY: Vec<serde_json::Value> = Vec::new();
++    let response_id = value
++        .get("id")
++        .and_then(serde_json::Value::as_str)
++        .unwrap_or_default()
++        .to_string();
++    let items = value
++        .get("output")
++        .and_then(serde_json::Value::as_array)
++        .cloned()
++        .unwrap_or(EMPTY);
++    let mut events = vec![Ok(ResponseEvent::Created {})];
++    for item in &items {
++        match serde_json::from_value::<ResponseItem>(item.clone()) {
++            Ok(item) => events.push(Ok(ResponseEvent::OutputItemDone(item))),
++            Err(err) => {
++                tracing::warn!("non-streaming output item failed to parse: {err}");
++            }
++        }
++    }
++    let usage = value.get("usage").filter(|u| u.is_object());
++    let int_field = |obj: &serde_json::Value, key: &str| {
++        obj.get(key)
++            .and_then(serde_json::Value::as_i64)
++            .unwrap_or(0)
++    };
++    let token_usage = usage.map(|u| {
++        let cached = u
++            .get("input_tokens_details")
++            .and_then(|d| d.get("cached_tokens"))
++            .and_then(serde_json::Value::as_i64)
++            .unwrap_or(0);
++        let reasoning = u
++            .get("output_tokens_details")
++            .and_then(|d| d.get("reasoning_tokens"))
++            .and_then(serde_json::Value::as_i64)
++            .unwrap_or(0);
++        TokenUsage {
++            input_tokens: int_field(u, "input_tokens"),
++            cached_input_tokens: cached,
++            cache_write_input_tokens: 0,
++            output_tokens: int_field(u, "output_tokens"),
++            reasoning_output_tokens: reasoning,
++            total_tokens: int_field(u, "total_tokens"),
++            codex_rollout_budget_units: None,
++        }
++    });
++    let end_turn = matches!(
++        value.get("status").and_then(serde_json::Value::as_str),
++        Some("completed") | None
++    )
++    .then_some(true);
++    events.push(Ok(ResponseEvent::Completed {
++        response_id,
++        token_usage,
++        end_turn,
++    }));
++    events
++}
++
+ fn map_response_stream(
+     api_stream: codex_api::ResponseStream,
+     session_telemetry: SessionTelemetry,
+@@ -2119,6 +2208,13 @@ where
+         let mut logged_error = false;
+         let mut tx_last_response = Some(tx_last_response);
+         let mut items_added: Vec<ResponseItem> = Vec::new();
++        // codex-swapper mod: some upstreams (ox-alpha on the opencode-go
++        // gateway) stream bare `response.output_text.delta` events with no
++        // output_item lifecycle and a `response.completed` whose output array
++        // is null, which drops the assistant message entirely. Synthesize the
++        // missing item lifecycle around orphan deltas.
++        let mut synthetic_message: Option<ResponseItem> = None;
++        let mut saw_real_output_item = false;
+         let (request_start, mut ttft_ms) = (Instant::now(), None);
+         let mut api_stream = api_stream;
+         let upstream_request_id = upstream_request_id.as_deref();
+@@ -2142,6 +2238,7 @@ where
+             };
+             match event {
+                 Ok(ResponseEvent::OutputItemDone(item)) => {
++                    saw_real_output_item = true;
+                     items_added.push(item.clone());
+                     if tx_event
+                         .send(Ok(ResponseEvent::OutputItemDone(item)))
+@@ -2162,6 +2259,18 @@ where
+                     end_turn,
+                 }) => {
+                     feedback_tags!(last_model_response_id = &response_id);
++                    // codex-swapper mod: flush any synthetic assistant message
++                    // before Completed so history and LastResponse see the text.
++                    if !saw_real_output_item && let Some(message) = synthetic_message.take() {
++                        items_added.push(message.clone());
++                        if tx_event
++                            .send(Ok(ResponseEvent::OutputItemDone(message)))
++                            .await
++                            .is_err()
++                        {
++                            return;
++                        }
++                    }
+                     if let Some(usage) = &token_usage {
+                         session_telemetry.sse_event_completed(usage, ttft_ms);
+                     }
+@@ -2195,6 +2304,48 @@ where
+                             i64::try_from(request_start.elapsed().as_millis()).unwrap_or(i64::MAX),
+                         );
+                     }
++                    // codex-swapper mod: bare output_text.delta without any
++                    // prior output_item.added — synthesize the assistant
++                    // message item so downstream streaming has an active item.
++                    let event = match event {
++                        ResponseEvent::OutputTextDelta(delta) if !saw_real_output_item => {
++                            if synthetic_message.is_none() {
++                                synthetic_message = Some(ResponseItem::Message {
++                                    id: None,
++                                    role: "assistant".to_string(),
++                                    content: Vec::new(),
++                                    phase: None,
++                                    internal_chat_message_metadata_passthrough: None,
++                                });
++                                ttft_ms = Some(
++                                    i64::try_from(request_start.elapsed().as_millis())
++                                        .unwrap_or(i64::MAX),
++                                );
++                                if let Some(item) = synthetic_message.clone()
++                                    && tx_event
++                                        .send(Ok(ResponseEvent::OutputItemAdded(item)))
++                                        .await
++                                        .is_err()
++                                {
++                                    return;
++                                }
++                            }
++                            if let Some(ResponseItem::Message { content, .. }) =
++                                synthetic_message.as_mut()
++                            {
++                                match content.last_mut() {
++                                    Some(ContentItem::OutputText { text }) => {
++                                        text.push_str(&delta);
++                                    }
++                                    _ => content.push(ContentItem::OutputText {
++                                        text: delta.clone(),
++                                    }),
++                                }
++                            }
++                            ResponseEvent::OutputTextDelta(delta)
++                        }
++                        other => other,
++                    };
+                     if tx_event.send(Ok(event)).await.is_err() {
+                         inference_trace_attempt.record_cancelled(
+                             STREAM_DROPPED_REASON,
+diff --git a/codex-rs/models-manager/src/model_info.rs b/codex-rs/models-manager/src/model_info.rs
+index bca77c594..813c3f08e 100644
+--- a/codex-rs/models-manager/src/model_info.rs
++++ b/codex-rs/models-manager/src/model_info.rs
+@@ -164,6 +164,7 @@ pub fn model_info_from_slug(slug: &str) -> ModelInfo {
+         web_search_tool_type: WebSearchToolType::Text,
+         truncation_policy: TruncationPolicyConfig::bytes(/*limit*/ 10_000),
+         supports_parallel_tool_calls: false,
++        request_non_streaming: false,
+         supports_image_detail_original: false,
+         context_window: Some(272_000),
+         max_context_window: Some(272_000),
+diff --git a/codex-rs/protocol/src/openai_models.rs b/codex-rs/protocol/src/openai_models.rs
+index c7318507b..f436e8db7 100644
+--- a/codex-rs/protocol/src/openai_models.rs
++++ b/codex-rs/protocol/src/openai_models.rs
+@@ -422,6 +422,12 @@ pub struct ModelInfo {
+     pub truncation_policy: TruncationPolicyConfig,
+     #[serde(default)]
+     pub supports_parallel_tool_calls: bool,
++    /// Send a single non-streaming POST and materialize the response instead
++    /// of consuming SSE. For upstreams whose streaming implementation is
++    /// incomplete (e.g. ox-alpha on the opencode-go gateway emits no item
++    /// lifecycle events and drops tool-call arguments entirely).
++    #[serde(default)]
++    pub request_non_streaming: bool,
+     #[serde(default)]
+     pub supports_image_detail_original: bool,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
 -- 
 2.54.0
 

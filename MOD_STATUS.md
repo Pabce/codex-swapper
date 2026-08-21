@@ -27,6 +27,9 @@ Last updated: 2026-08-20T12:15:00Z (live effort-array audit; muse-spark-1.2 remo
 - app-server/src/config_manager.rs — per-thread static-catalog injection
 - core/src/thread_manager.rs — per-thread models manager when provider differs
 - app-server/src/models.rs — provider-namespaced slugs for colliding model ids (`ae7326407`)
+- app-server/src/models.rs — preserve active-provider ownership for bare
+  colliding slugs (`c097e783f`); bare Luna routes to OpenAI and namespaced Luna
+  routes to OpenCode Go
 - models-manager/src/manager.rs — strip the provider namespace from the wire model slug
 - models-manager/src/manager_tests.rs — updated namespaced-slug tests
 - core/src/client.rs — OpenCode Go key failover arm + state rotation (`647bbf0a2`)
@@ -86,6 +89,40 @@ reasoning, text.verbosity, parallel_tool_calls) + real `codex-mod exec` turns.
   supports_namespace_tools false). Tradeoff: no apply_patch / MCP namespaces /
   multi-agent; function-tool agent only.
 
+### ox-alpha-free note (END-TO-END VERIFIED 2026-08-21)
+- Stealth free preview; docs still list it as chat-completions-only, but the
+  Responses endpoint works in practice (same docs-lag as DeepSeek).
+- Gateway ID mapping matters: opencode-go gateway serves it as `ox-alpha-free`;
+  the main Zen API serves the same model as `x-preview-f-free`. Using the wrong
+  ID on either base returns 401 `ModelError: "Model ... is not supported"`.
+- Raw probes (`probe_oxalpha_responses.py`): basic turn, function-call
+  emission with valid JSON args, and the function_call -> function_call_output
+  round trip all PASS non-streaming; plain-string `input` is rejected with
+  "Input cannot be empty" (use the structured array form).
+- Its STREAMING is degenerate on both gateways: bare `response.output_text.delta`
+  with no output_item lifecycle and a `response.completed` whose output array is
+  null (text turns drop the message); with tools attached only an
+  `output_item.added` announcement arrives and arguments never stream.
+  Two mods fix this: (1) core synthesizes item lifecycle around orphan text
+  deltas as a safety net; (2) new per-model catalog flag `request_non_streaming`
+  POSTs once and materializes the JSON response instead of consuming SSE.
+- CLI usage: `codex-mod exec --profile opengo -m ox-alpha-free "..."`. The
+  profile ships `model_catalog_json`, which is how per-model metadata reaches
+  exec (exec has no app-server-style convention-catalog injection). Desktop
+  threads get it automatically via the existing config_manager injection.
+- Verified: text turn exit 0 with visible reply; real shell tool-call turn
+  (file created + correct summary); deepseek-v4-flash regression clean on the
+  same binary.
+- Catalog flags: levels low/medium/high (default medium), supports_search_tool
+  false, context_window 256000 (unverified), request_non_streaming true.
+
+### models_cache.json drift incident (2026-08-21)
+- OpenAI changed their `/models` payload mid-day; fresh cache entries omitted
+  `supports_parallel_tool_calls`, whose deserializer field had no
+  `#[serde(default)]` -> "failed to load models cache" at startup and fallback
+  metadata everywhere. Fixed properly by adding the serde default; existing
+  caches were also rewritten locally to unblock immediately.
+
 ### Not promotable (Responses API path on this gateway)
 - minimax-m3 / minimax-m2.5 / kimi-k3 / qwen3.8-max / qwen3.7-max / qwen3.7-plus /
   qwen3.6-plus / qwen3.5-plus — "Model ... is not supported for format openai"
@@ -120,6 +157,10 @@ the gateway accepts without error; defaults unchanged.
   absent (gateway drop); effort arrays asserted (deepseek minimal..max,
   contributor minimal..xhigh, luna low..max); luna namespace + deepseek
   resolution intact.
+- Luna collision regression (2026-08-20): reproduced on the old release as
+  bare `gpt-5.6-luna -> opencode-go`; rebuilt release PASS with bare Luna
+  resolving to `openai` and `opencode-go/gpt-5.6-luna` resolving to
+  `opencode-go` in the same app-server process.
 - Unit tests: client_tests (incl. new custom-provider client_metadata test) PASS.
 - Real turns (2026-08-19): deepseek-flash, luna, hy3, glm-5.3, kimi-k2.7-code,
   mimo-v2.5-pro, grok-4.5, muse-spark-1.2 (incl. file-edit turn) COMPLETED.
@@ -154,6 +195,26 @@ The US exit is engaged only through the explicit `opencode-go-us` path:
   provider id so the mod's per-thread injection cannot swap in the
   contributor-only catalog, and the desktop picker gets no
   `opencode-go-us/*` duplicate rows.
+
+### Incident 2026-08-20: proxy crashed on large request bodies ("stream disconnected")
+The desktop thread (muse-spark-1.2-contributor via the US proxy) failed with
+`stream disconnected before completion: error sending request for url
+(http://127.0.0.1:18887/v1/responses)`. Root cause (proxy log): the proxy
+passed the whole JSON body to curl as a `-d <body>` command-line argument,
+and macOS ARG_MAX (1 MiB) was exceeded once the thread's conversation context
+grew — `OSError: [Errno 7] Argument list too long: 'curl'`, handler died, no
+response sent (60 occurrences in /tmp/us-proxy.log). Fixed in
+`us-forward-proxy.py`:
+- body now sent via stdin (`--data-binary @-` + subprocess `input=body`), no
+  argv size limit;
+- curl max-time raised 90s -> 600s (the proxy buffers the whole upstream
+  response; 90s killed long muse turns);
+- `launch-us-proxy.sh` now detaches via `os.setsid()` (macOS has no setsid(1))
+  because nohup+disown did not survive tool-session process-group cleanup.
+Verified 2026-08-20: 1.5 MB body -> HTTP 200 with a response id via both the
+US exit (contributor) and the direct path (deepseek); real
+`codex exec --profile opencode-go-us` contributor turn exit 0; proxy survives
+session boundaries.
 - Mod commit `6e11e883a`: provider_is_opencode_go also matches the loopback
   proxy base_url (name "OpenCode Go"), so key failover stays armed on the US path.
 - Verified 2026-08-19: pass-through streaming end-to-end (real deepseek turn via
