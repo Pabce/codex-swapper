@@ -83,21 +83,28 @@ else
   export CARGO_INCREMENTAL=1
   echo "incremental: enabled (no sccache)"
   # 2) CARGO_TARGET_DIR: only when sccache is OFF, keep 20G target off the nearly-full Data volume
-  _try_target_dir() {
-    local cand
-    for cand in "/Volumes/Extreme SSD/codex-target" "$HOME/.cache/codex-swapper/target" ""; do
-      if [ -z "$cand" ]; then
-        echo "using default CARGO_TARGET_DIR (./target)"
-        return 0
-      fi
-      if mkdir -p "$cand" 2>/dev/null && [ -w "$cand" ]; then
-        export CARGO_TARGET_DIR="$cand"
-        echo "using CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
-        return 0
-      fi
-    done
-  }
-  _try_target_dir
+  # Dev machines only: without ChatGPT.app (CI runner, --from-source elsewhere)
+  # keep the default ./target so callers (release.yml) find the binary where
+  # upstream convention puts it.
+  if [ -f "$APP_HOST" ]; then
+    _try_target_dir() {
+      local cand
+      for cand in "/Volumes/Extreme SSD/codex-target" "$HOME/.cache/codex-swapper/target" ""; do
+        if [ -z "$cand" ]; then
+          echo "using default CARGO_TARGET_DIR (./target)"
+          return 0
+        fi
+        if mkdir -p "$cand" 2>/dev/null && [ -w "$cand" ]; then
+          export CARGO_TARGET_DIR="$cand"
+          echo "using CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
+          return 0
+        fi
+      done
+    }
+    _try_target_dir
+  else
+    echo "using default CARGO_TARGET_DIR (no ChatGPT.app bundle; dev-machine target-dir fallback skipped)"
+  fi
 fi
 
 # 3) zld (if installed): fast ld64 drop-in
