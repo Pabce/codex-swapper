@@ -9,13 +9,103 @@ import json
 import os
 import pathlib
 import select
+import shutil
 import subprocess
 import sys
 import threading
 
 _ROOT = pathlib.Path(__file__).resolve().parent
 BIN = str(_ROOT / "codex-rs/codex-rs/target/release/codex")
-CODEX_HOME = str(_ROOT / "codex-mod-home")
+# Override with SMOKE_CODEX_HOME=... for hermetic test runs.
+CODEX_HOME = os.environ.get("SMOKE_CODEX_HOME") or str(_ROOT / "codex-mod-home")
+
+
+def bootstrap_codex_home() -> None:
+    """Seed a swapper-like CODEX_HOME so offline assertions have material.
+
+    codex hard-exits when CODEX_HOME is missing, model/list only merges
+    convention catalogs for providers registered in config.toml, and the
+    thread/start assertions expect the gateway providers to exist — none of
+    which a fresh checkout provides (codex-mod-home/ is gitignored).
+    """
+    home = pathlib.Path(CODEX_HOME)
+    home.mkdir(parents=True, exist_ok=True)
+    cfg = home / "config.toml"
+    if not cfg.exists():
+        cfg.write_text(
+            "# minimal smoke-test CODEX_HOME (generated)\n"
+            "[model_providers.opencode-go]\n"
+            'name = "OpenCode Go"\n'
+            'base_url = "https://opencode.ai/zen/go/v1"\n'
+            'wire_api = "responses"\n'
+            "\n"
+            "[model_providers.opencode-go.auth]\n"
+            'command = "true"\n'
+            "timeout_ms = 1000\n"
+            "\n"
+            "[model_providers.opencode-go-us-contributor]\n"
+            'name = "OpenCode Go US Contributor"\n'
+            'base_url = "http://127.0.0.1:9/v1"\n'
+            'wire_api = "responses"\n'
+            "\n"
+            "[model_providers.opencode-go-us-contributor.auth]\n"
+            'command = "true"\n'
+            "timeout_ms = 1000\n"
+        )
+    # Only ship catalogs that make the assertions unambiguous: seeding the
+    # full-list us-cli catalog too would let gateway-side collisions
+    # (deepseek-v4-flash, gpt-5.6-luna) resolve to a random registered
+    # provider (HashMap iteration order).
+    src = _ROOT / "model-catalogs"
+    if src.is_dir():
+        dst = home / "model-catalogs"
+        dst.mkdir(exist_ok=True)
+        for name in (
+            "opencode-go.json",
+            "opencode-go-us-contributor.json",
+        ):
+            f = src / name
+            if f.exists():
+                shutil.copy2(f, dst / name)
+    # Seed the OpenAI active-provider cache so bare colliding slugs
+    # (gpt-5.6-luna) stay on openai exactly like a real install.
+    import datetime
+
+    cache = home / "models_cache.json"
+    if not cache.exists():
+
+        def _entry(slug, display, effort="medium"):
+            return {
+                "slug": slug,
+                "display_name": display,
+                "base_instructions": "You are Codex.",
+                "supported_reasoning_levels": [
+                    {"effort": effort, "description": "d"}
+                ],
+                "shell_type": "shell_command",
+                "visibility": "list",
+                "supported_in_api": True,
+                "priority": 1,
+                "support_verbosity": False,
+                "truncation_policy": {"mode": "tokens", "limit": 10000},
+                "experimental_supported_tools": [],
+            }
+
+        cache.write_text(
+            json.dumps(
+                {
+                    "fetched_at": datetime.datetime.now(
+                        datetime.timezone.utc
+                    ).isoformat(),
+                    "etag": None,
+                    "client_version": "0.148",
+                    "models": [
+                        _entry("gpt-5.6-sol", "GPT-5.6-Sol"),
+                        _entry("gpt-5.6-luna", "GPT-5.6-Luna"),
+                    ],
+                }
+            )
+        )
 
 
 def main() -> int:
@@ -23,13 +113,7 @@ def main() -> int:
     env["CODEX_HOME"] = CODEX_HOME
     env.setdefault("RUST_LOG", "warn")
 
-    # codex hard-exits when CODEX_HOME does not exist (fresh CI checkout:
-    # codex-mod-home/ is gitignored), so bootstrap a minimal home.
-    home = pathlib.Path(CODEX_HOME)
-    home.mkdir(parents=True, exist_ok=True)
-    cfg = home / "config.toml"
-    if not cfg.exists():
-        cfg.write_text("# minimal smoke-test CODEX_HOME\n")
+    bootstrap_codex_home()
 
     proc = subprocess.Popen(
         [BIN, "app-server", "--stdio"],
