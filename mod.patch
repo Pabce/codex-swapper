@@ -1,8 +1,8 @@
-From 82f043fe35ee29f0079ea4dd47761420024dce89 Mon Sep 17 00:00:00 2001
+From e0fd0e09dab332553d31c6f698e05cf1a213c10f Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
 Date: Wed, 19 Aug 2026 10:12:33 +0200
-Subject: [PATCH 01/10] codex-swapper mod: merged provider catalogs +
- per-thread provider resolution (0.148.0-alpha.15)
+Subject: [PATCH 1/9] codex-swapper mod: merged provider catalogs + per-thread
+ provider resolution (0.148.0-alpha.15)
 
 ---
  codex-rs/Cargo.lock                           | 280 +++++++++---------
@@ -16,7 +16,7 @@ Subject: [PATCH 01/10] codex-swapper mod: merged provider catalogs +
  8 files changed, 406 insertions(+), 144 deletions(-)
 
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 13524e63e..4cb1d3111 100644
+index 2d47976c6..250736fff 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -394,7 +394,7 @@ checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
@@ -91,7 +91,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "app_test_support",
-@@ -2082,7 +2082,7 @@ dependencies = [
+@@ -2083,7 +2083,7 @@ dependencies = [
  
  [[package]]
  name = "codex-app-server-client"
@@ -100,7 +100,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-app-server",
   "codex-app-server-protocol",
-@@ -2109,7 +2109,7 @@ dependencies = [
+@@ -2110,7 +2110,7 @@ dependencies = [
  
  [[package]]
  name = "codex-app-server-daemon"
@@ -109,7 +109,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "codex-app-server-protocol",
-@@ -2130,7 +2130,7 @@ dependencies = [
+@@ -2131,7 +2131,7 @@ dependencies = [
  
  [[package]]
  name = "codex-app-server-protocol"
@@ -118,7 +118,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "codex-app-server-protocol-noop-macros",
-@@ -2163,11 +2163,11 @@ dependencies = [
+@@ -2164,11 +2164,11 @@ dependencies = [
  
  [[package]]
  name = "codex-app-server-protocol-noop-macros"
@@ -132,7 +132,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "clap",
-@@ -2189,7 +2189,7 @@ dependencies = [
+@@ -2190,7 +2190,7 @@ dependencies = [
  
  [[package]]
  name = "codex-app-server-transport"
@@ -141,7 +141,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "axum",
-@@ -2231,7 +2231,7 @@ dependencies = [
+@@ -2232,7 +2232,7 @@ dependencies = [
  
  [[package]]
  name = "codex-apply-patch"
@@ -150,7 +150,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "assert_cmd",
-@@ -2251,7 +2251,7 @@ dependencies = [
+@@ -2252,7 +2252,7 @@ dependencies = [
  
  [[package]]
  name = "codex-arg0"
@@ -159,7 +159,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "codex-apply-patch",
-@@ -2271,7 +2271,7 @@ dependencies = [
+@@ -2272,7 +2272,7 @@ dependencies = [
  
  [[package]]
  name = "codex-async-utils"
@@ -168,7 +168,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "pretty_assertions",
   "tokio",
-@@ -2280,7 +2280,7 @@ dependencies = [
+@@ -2281,7 +2281,7 @@ dependencies = [
  
  [[package]]
  name = "codex-aws-auth"
@@ -177,7 +177,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "aws-config",
   "aws-credential-types",
-@@ -2295,7 +2295,7 @@ dependencies = [
+@@ -2296,7 +2296,7 @@ dependencies = [
  
  [[package]]
  name = "codex-backend-client"
@@ -186,7 +186,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "codex-api",
-@@ -2315,7 +2315,7 @@ dependencies = [
+@@ -2316,7 +2316,7 @@ dependencies = [
  
  [[package]]
  name = "codex-backend-openapi-models"
@@ -195,7 +195,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "serde",
   "serde_json",
-@@ -2324,7 +2324,7 @@ dependencies = [
+@@ -2325,7 +2325,7 @@ dependencies = [
  
  [[package]]
  name = "codex-build-info"
@@ -204,7 +204,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-install-context",
   "pretty_assertions",
-@@ -2336,7 +2336,7 @@ dependencies = [
+@@ -2337,7 +2337,7 @@ dependencies = [
  
  [[package]]
  name = "codex-bwrap"
@@ -213,7 +213,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "cc",
   "libc",
-@@ -2345,7 +2345,7 @@ dependencies = [
+@@ -2346,7 +2346,7 @@ dependencies = [
  
  [[package]]
  name = "codex-chatgpt"
@@ -222,7 +222,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "clap",
-@@ -2367,7 +2367,7 @@ dependencies = [
+@@ -2368,7 +2368,7 @@ dependencies = [
  
  [[package]]
  name = "codex-cli"
@@ -231,7 +231,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "app_test_support",
-@@ -2455,7 +2455,7 @@ dependencies = [
+@@ -2456,7 +2456,7 @@ dependencies = [
  
  [[package]]
  name = "codex-client"
@@ -240,7 +240,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-http-client",
   "eventsource-stream",
-@@ -2468,7 +2468,7 @@ dependencies = [
+@@ -2469,7 +2469,7 @@ dependencies = [
  
  [[package]]
  name = "codex-cloud-config"
@@ -249,7 +249,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "base64 0.22.1",
   "chrono",
-@@ -2493,7 +2493,7 @@ dependencies = [
+@@ -2494,7 +2494,7 @@ dependencies = [
  
  [[package]]
  name = "codex-cloud-tasks"
@@ -258,7 +258,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "chrono",
-@@ -2526,7 +2526,7 @@ dependencies = [
+@@ -2527,7 +2527,7 @@ dependencies = [
  
  [[package]]
  name = "codex-cloud-tasks-client"
@@ -267,7 +267,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "chrono",
-@@ -2541,7 +2541,7 @@ dependencies = [
+@@ -2542,7 +2542,7 @@ dependencies = [
  
  [[package]]
  name = "codex-cloud-tasks-mock-client"
@@ -276,7 +276,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "chrono",
   "codex-cloud-tasks-client",
-@@ -2550,7 +2550,7 @@ dependencies = [
+@@ -2551,7 +2551,7 @@ dependencies = [
  
  [[package]]
  name = "codex-code-mode"
@@ -285,7 +285,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-code-mode-protocol",
   "codex-http-client",
-@@ -2574,7 +2574,7 @@ dependencies = [
+@@ -2575,7 +2575,7 @@ dependencies = [
  
  [[package]]
  name = "codex-code-mode-host"
@@ -294,7 +294,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "axum",
-@@ -2601,7 +2601,7 @@ dependencies = [
+@@ -2602,7 +2602,7 @@ dependencies = [
  
  [[package]]
  name = "codex-code-mode-protocol"
@@ -303,7 +303,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-protocol",
   "glob",
-@@ -2619,7 +2619,7 @@ dependencies = [
+@@ -2620,7 +2620,7 @@ dependencies = [
  
  [[package]]
  name = "codex-code-mode-runtime"
@@ -312,7 +312,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-code-mode-protocol",
   "codex-protocol",
-@@ -2635,11 +2635,11 @@ dependencies = [
+@@ -2636,11 +2636,11 @@ dependencies = [
  
  [[package]]
  name = "codex-collaboration-mode-templates"
@@ -326,7 +326,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "base64 0.22.1",
-@@ -2687,7 +2687,7 @@ dependencies = [
+@@ -2688,7 +2688,7 @@ dependencies = [
  
  [[package]]
  name = "codex-connectors"
@@ -335,7 +335,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "arc-swap",
-@@ -2709,7 +2709,7 @@ dependencies = [
+@@ -2710,7 +2710,7 @@ dependencies = [
  
  [[package]]
  name = "codex-connectors-extension"
@@ -344,7 +344,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-connectors",
   "codex-core-plugins",
-@@ -2722,7 +2722,7 @@ dependencies = [
+@@ -2723,7 +2723,7 @@ dependencies = [
  
  [[package]]
  name = "codex-context-fragments"
@@ -353,7 +353,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-protocol",
   "codex-utils-string",
-@@ -2730,7 +2730,7 @@ dependencies = [
+@@ -2731,7 +2731,7 @@ dependencies = [
  
  [[package]]
  name = "codex-core"
@@ -362,7 +362,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "arc-swap",
-@@ -2861,7 +2861,7 @@ dependencies = [
+@@ -2862,7 +2862,7 @@ dependencies = [
  
  [[package]]
  name = "codex-core-api"
@@ -371,7 +371,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-analytics",
   "codex-app-server-protocol",
-@@ -2884,7 +2884,7 @@ dependencies = [
+@@ -2885,7 +2885,7 @@ dependencies = [
  
  [[package]]
  name = "codex-core-plugins"
@@ -380,7 +380,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "chrono",
-@@ -2940,7 +2940,7 @@ dependencies = [
+@@ -2941,7 +2941,7 @@ dependencies = [
  
  [[package]]
  name = "codex-diagnostics"
@@ -389,7 +389,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "libc",
   "pretty_assertions",
-@@ -2948,7 +2948,7 @@ dependencies = [
+@@ -2949,7 +2949,7 @@ dependencies = [
  
  [[package]]
  name = "codex-exec"
@@ -398,7 +398,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "assert_cmd",
-@@ -2995,7 +2995,7 @@ dependencies = [
+@@ -2996,7 +2996,7 @@ dependencies = [
  
  [[package]]
  name = "codex-exec-server"
@@ -407,7 +407,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "arc-swap",
-@@ -3053,7 +3053,7 @@ dependencies = [
+@@ -3054,7 +3054,7 @@ dependencies = [
  
  [[package]]
  name = "codex-exec-server-protocol"
@@ -416,7 +416,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "base64 0.22.1",
   "codex-file-system",
-@@ -3068,7 +3068,7 @@ dependencies = [
+@@ -3069,7 +3069,7 @@ dependencies = [
  
  [[package]]
  name = "codex-exec-server-test-support"
@@ -425,7 +425,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-exec-server",
   "codex-http-client",
-@@ -3076,7 +3076,7 @@ dependencies = [
+@@ -3077,7 +3077,7 @@ dependencies = [
  
  [[package]]
  name = "codex-execpolicy"
@@ -434,7 +434,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "clap",
-@@ -3094,7 +3094,7 @@ dependencies = [
+@@ -3095,7 +3095,7 @@ dependencies = [
  
  [[package]]
  name = "codex-experimental-api-macros"
@@ -443,7 +443,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "proc-macro2",
   "quote",
-@@ -3103,7 +3103,7 @@ dependencies = [
+@@ -3104,7 +3104,7 @@ dependencies = [
  
  [[package]]
  name = "codex-extension-api"
@@ -452,7 +452,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-config",
   "codex-context-fragments",
-@@ -3120,7 +3120,7 @@ dependencies = [
+@@ -3121,7 +3121,7 @@ dependencies = [
  
  [[package]]
  name = "codex-extension-items"
@@ -461,7 +461,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-utils-absolute-path",
   "pretty_assertions",
-@@ -3132,7 +3132,7 @@ dependencies = [
+@@ -3133,7 +3133,7 @@ dependencies = [
  
  [[package]]
  name = "codex-external-agent-migration"
@@ -470,7 +470,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "chrono",
   "codex-analytics",
-@@ -3161,7 +3161,7 @@ dependencies = [
+@@ -3162,7 +3162,7 @@ dependencies = [
  
  [[package]]
  name = "codex-features"
@@ -479,7 +479,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-otel",
   "codex-protocol",
-@@ -3174,7 +3174,7 @@ dependencies = [
+@@ -3175,7 +3175,7 @@ dependencies = [
  
  [[package]]
  name = "codex-feedback"
@@ -488,7 +488,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "codex-login",
-@@ -3189,7 +3189,7 @@ dependencies = [
+@@ -3190,7 +3190,7 @@ dependencies = [
  
  [[package]]
  name = "codex-file-search"
@@ -497,7 +497,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "clap",
-@@ -3205,7 +3205,7 @@ dependencies = [
+@@ -3206,7 +3206,7 @@ dependencies = [
  
  [[package]]
  name = "codex-file-system"
@@ -506,7 +506,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "bytes",
   "codex-protocol",
-@@ -3217,7 +3217,7 @@ dependencies = [
+@@ -3218,7 +3218,7 @@ dependencies = [
  
  [[package]]
  name = "codex-file-watcher"
@@ -515,7 +515,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "notify",
   "pretty_assertions",
-@@ -3228,7 +3228,7 @@ dependencies = [
+@@ -3229,7 +3229,7 @@ dependencies = [
  
  [[package]]
  name = "codex-git-attribution"
@@ -524,7 +524,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-backend-client",
   "codex-extension-api",
-@@ -3241,7 +3241,7 @@ dependencies = [
+@@ -3242,7 +3242,7 @@ dependencies = [
  
  [[package]]
  name = "codex-git-utils"
@@ -533,7 +533,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "chrono",
-@@ -3267,7 +3267,7 @@ dependencies = [
+@@ -3268,7 +3268,7 @@ dependencies = [
  
  [[package]]
  name = "codex-goal-extension"
@@ -542,7 +542,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "chrono",
-@@ -3291,7 +3291,7 @@ dependencies = [
+@@ -3292,7 +3292,7 @@ dependencies = [
  
  [[package]]
  name = "codex-guardian"
@@ -551,7 +551,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-core",
   "codex-extension-api",
-@@ -3300,7 +3300,7 @@ dependencies = [
+@@ -3301,7 +3301,7 @@ dependencies = [
  
  [[package]]
  name = "codex-guardian-v2"
@@ -560,7 +560,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "codex-api",
-@@ -3320,7 +3320,7 @@ dependencies = [
+@@ -3324,7 +3324,7 @@ dependencies = [
  
  [[package]]
  name = "codex-history"
@@ -569,7 +569,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "codex-protocol",
-@@ -3332,7 +3332,7 @@ dependencies = [
+@@ -3336,7 +3336,7 @@ dependencies = [
  
  [[package]]
  name = "codex-home"
@@ -578,7 +578,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-extension-api",
   "codex-utils-absolute-path",
-@@ -3343,7 +3343,7 @@ dependencies = [
+@@ -3347,7 +3347,7 @@ dependencies = [
  
  [[package]]
  name = "codex-hooks"
@@ -587,7 +587,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "async-channel",
-@@ -3368,7 +3368,7 @@ dependencies = [
+@@ -3372,7 +3372,7 @@ dependencies = [
  
  [[package]]
  name = "codex-http-client"
@@ -596,7 +596,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "bytes",
   "codex-utils-cargo-bin",
-@@ -3399,7 +3399,7 @@ dependencies = [
+@@ -3404,7 +3404,7 @@ dependencies = [
  
  [[package]]
  name = "codex-image-generation-extension"
@@ -605,7 +605,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "base64 0.22.1",
   "codex-api",
-@@ -3426,7 +3426,7 @@ dependencies = [
+@@ -3431,7 +3431,7 @@ dependencies = [
  
  [[package]]
  name = "codex-install-context"
@@ -614,7 +614,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-utils-absolute-path",
   "codex-utils-home-dir",
-@@ -3439,7 +3439,7 @@ dependencies = [
+@@ -3444,7 +3444,7 @@ dependencies = [
  
  [[package]]
  name = "codex-keyring-store"
@@ -623,7 +623,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "keyring",
   "tracing",
-@@ -3447,7 +3447,7 @@ dependencies = [
+@@ -3452,7 +3452,7 @@ dependencies = [
  
  [[package]]
  name = "codex-linux-sandbox"
@@ -632,7 +632,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "clap",
   "codex-core",
-@@ -3472,7 +3472,7 @@ dependencies = [
+@@ -3477,7 +3477,7 @@ dependencies = [
  
  [[package]]
  name = "codex-lmstudio"
@@ -641,7 +641,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-core",
   "codex-http-client",
-@@ -3486,7 +3486,7 @@ dependencies = [
+@@ -3491,7 +3491,7 @@ dependencies = [
  
  [[package]]
  name = "codex-login"
@@ -650,7 +650,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "base64 0.22.1",
-@@ -3529,7 +3529,7 @@ dependencies = [
+@@ -3534,7 +3534,7 @@ dependencies = [
  
  [[package]]
  name = "codex-mcp"
@@ -659,7 +659,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "arc-swap",
-@@ -3567,7 +3567,7 @@ dependencies = [
+@@ -3572,7 +3572,7 @@ dependencies = [
  
  [[package]]
  name = "codex-mcp-extension"
@@ -668,7 +668,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-config",
   "codex-connectors",
-@@ -3593,7 +3593,7 @@ dependencies = [
+@@ -3598,7 +3598,7 @@ dependencies = [
  
  [[package]]
  name = "codex-mcp-server"
@@ -677,7 +677,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "app_test_support",
-@@ -3632,7 +3632,7 @@ dependencies = [
+@@ -3637,7 +3637,7 @@ dependencies = [
  
  [[package]]
  name = "codex-memories-extension"
@@ -686,7 +686,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-core",
   "codex-extension-api",
-@@ -3653,7 +3653,7 @@ dependencies = [
+@@ -3658,7 +3658,7 @@ dependencies = [
  
  [[package]]
  name = "codex-memories-read"
@@ -695,7 +695,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-protocol",
   "codex-shell-command",
-@@ -3663,7 +3663,7 @@ dependencies = [
+@@ -3668,7 +3668,7 @@ dependencies = [
  
  [[package]]
  name = "codex-memories-write"
@@ -704,7 +704,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "chrono",
-@@ -3700,7 +3700,7 @@ dependencies = [
+@@ -3705,7 +3705,7 @@ dependencies = [
  
  [[package]]
  name = "codex-message-history"
@@ -713,7 +713,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-config",
   "memchr",
-@@ -3714,7 +3714,7 @@ dependencies = [
+@@ -3719,7 +3719,7 @@ dependencies = [
  
  [[package]]
  name = "codex-model-provider"
@@ -722,7 +722,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-agent-identity",
   "codex-api",
-@@ -3737,7 +3737,7 @@ dependencies = [
+@@ -3742,7 +3742,7 @@ dependencies = [
  
  [[package]]
  name = "codex-model-provider-info"
@@ -731,7 +731,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-api",
   "codex-protocol",
-@@ -3753,7 +3753,7 @@ dependencies = [
+@@ -3758,7 +3758,7 @@ dependencies = [
  
  [[package]]
  name = "codex-models-manager"
@@ -740,7 +740,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "chrono",
   "codex-collaboration-mode-templates",
-@@ -3773,7 +3773,7 @@ dependencies = [
+@@ -3778,7 +3778,7 @@ dependencies = [
  
  [[package]]
  name = "codex-network-proxy"
@@ -749,7 +749,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "base64 0.22.1",
-@@ -3811,7 +3811,7 @@ dependencies = [
+@@ -3816,7 +3816,7 @@ dependencies = [
  
  [[package]]
  name = "codex-ollama"
@@ -758,7 +758,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "assert_matches",
   "async-stream",
-@@ -3831,7 +3831,7 @@ dependencies = [
+@@ -3836,7 +3836,7 @@ dependencies = [
  
  [[package]]
  name = "codex-otel"
@@ -767,7 +767,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "chrono",
   "codex-api",
-@@ -3862,7 +3862,7 @@ dependencies = [
+@@ -3867,7 +3867,7 @@ dependencies = [
  
  [[package]]
  name = "codex-plugin"
@@ -776,7 +776,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-config",
   "codex-protocol",
-@@ -3875,7 +3875,7 @@ dependencies = [
+@@ -3880,7 +3880,7 @@ dependencies = [
  
  [[package]]
  name = "codex-process-hardening"
@@ -785,7 +785,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "libc",
   "pretty_assertions",
-@@ -3883,7 +3883,7 @@ dependencies = [
+@@ -3888,7 +3888,7 @@ dependencies = [
  
  [[package]]
  name = "codex-prompts"
@@ -794,7 +794,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "codex-context-fragments",
-@@ -3897,7 +3897,7 @@ dependencies = [
+@@ -3902,7 +3902,7 @@ dependencies = [
  
  [[package]]
  name = "codex-protocol"
@@ -803,7 +803,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "chardetng",
-@@ -3939,7 +3939,7 @@ dependencies = [
+@@ -3944,7 +3944,7 @@ dependencies = [
  
  [[package]]
  name = "codex-queue-extension"
@@ -812,7 +812,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "codex-core",
-@@ -3960,7 +3960,7 @@ dependencies = [
+@@ -3965,7 +3965,7 @@ dependencies = [
  
  [[package]]
  name = "codex-response-debug-context"
@@ -821,7 +821,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "base64 0.22.1",
   "codex-api",
-@@ -3971,7 +3971,7 @@ dependencies = [
+@@ -3976,7 +3976,7 @@ dependencies = [
  
  [[package]]
  name = "codex-responses-api-proxy"
@@ -830,7 +830,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "clap",
-@@ -3988,7 +3988,7 @@ dependencies = [
+@@ -3993,7 +3993,7 @@ dependencies = [
  
  [[package]]
  name = "codex-rmcp-client"
@@ -839,7 +839,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "axum",
-@@ -4032,7 +4032,7 @@ dependencies = [
+@@ -4037,7 +4037,7 @@ dependencies = [
  
  [[package]]
  name = "codex-rollout"
@@ -848,7 +848,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "chrono",
-@@ -4059,7 +4059,7 @@ dependencies = [
+@@ -4064,7 +4064,7 @@ dependencies = [
  
  [[package]]
  name = "codex-rollout-trace"
@@ -857,7 +857,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "codex-code-mode",
-@@ -4075,7 +4075,7 @@ dependencies = [
+@@ -4080,7 +4080,7 @@ dependencies = [
  
  [[package]]
  name = "codex-sandboxing"
@@ -866,7 +866,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "codex-network-proxy",
-@@ -4099,7 +4099,7 @@ dependencies = [
+@@ -4104,7 +4104,7 @@ dependencies = [
  
  [[package]]
  name = "codex-secrets"
@@ -875,7 +875,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "age",
   "anyhow",
-@@ -4120,7 +4120,7 @@ dependencies = [
+@@ -4125,7 +4125,7 @@ dependencies = [
  
  [[package]]
  name = "codex-shell-command"
@@ -884,7 +884,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "base64 0.22.1",
-@@ -4141,7 +4141,7 @@ dependencies = [
+@@ -4146,7 +4146,7 @@ dependencies = [
  
  [[package]]
  name = "codex-shell-escalation"
@@ -893,7 +893,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "clap",
-@@ -4161,7 +4161,7 @@ dependencies = [
+@@ -4166,7 +4166,7 @@ dependencies = [
  
  [[package]]
  name = "codex-skills"
@@ -902,7 +902,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-protocol",
   "codex-shell-command",
-@@ -4178,7 +4178,7 @@ dependencies = [
+@@ -4183,7 +4183,7 @@ dependencies = [
  
  [[package]]
  name = "codex-skills-extension"
@@ -911,7 +911,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-analytics",
   "codex-config",
-@@ -4214,7 +4214,7 @@ dependencies = [
+@@ -4219,7 +4219,7 @@ dependencies = [
  
  [[package]]
  name = "codex-state"
@@ -920,7 +920,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "chrono",
-@@ -4238,7 +4238,7 @@ dependencies = [
+@@ -4243,7 +4243,7 @@ dependencies = [
  
  [[package]]
  name = "codex-stdio-to-uds"
@@ -929,7 +929,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "codex-uds",
-@@ -4250,7 +4250,7 @@ dependencies = [
+@@ -4255,7 +4255,7 @@ dependencies = [
  
  [[package]]
  name = "codex-terminal-detection"
@@ -938,7 +938,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "pretty_assertions",
   "tracing",
-@@ -4258,7 +4258,7 @@ dependencies = [
+@@ -4263,7 +4263,7 @@ dependencies = [
  
  [[package]]
  name = "codex-test-binary-support"
@@ -947,7 +947,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-arg0",
   "tempfile",
-@@ -4266,7 +4266,7 @@ dependencies = [
+@@ -4271,7 +4271,7 @@ dependencies = [
  
  [[package]]
  name = "codex-thread-manager-sample"
@@ -956,7 +956,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "clap",
-@@ -4277,7 +4277,7 @@ dependencies = [
+@@ -4282,7 +4282,7 @@ dependencies = [
  
  [[package]]
  name = "codex-thread-store"
@@ -965,7 +965,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "chrono",
   "codex-app-server-protocol",
-@@ -4307,7 +4307,7 @@ dependencies = [
+@@ -4312,7 +4312,7 @@ dependencies = [
  
  [[package]]
  name = "codex-tools"
@@ -974,7 +974,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "bitflags 2.13.1",
   "codex-code-mode",
-@@ -4333,7 +4333,7 @@ dependencies = [
+@@ -4338,7 +4338,7 @@ dependencies = [
  
  [[package]]
  name = "codex-tui"
@@ -983,7 +983,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "app_test_support",
-@@ -4446,7 +4446,7 @@ dependencies = [
+@@ -4450,7 +4450,7 @@ dependencies = [
  
  [[package]]
  name = "codex-uds"
@@ -992,7 +992,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "async-io",
   "pretty_assertions",
-@@ -4458,7 +4458,7 @@ dependencies = [
+@@ -4462,7 +4462,7 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-absolute-path"
@@ -1001,7 +1001,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "dirs",
   "dunce",
-@@ -4472,14 +4472,14 @@ dependencies = [
+@@ -4476,14 +4476,14 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-approval-presets"
@@ -1018,7 +1018,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "base64 0.22.1",
   "codex-protocol",
-@@ -4493,7 +4493,7 @@ dependencies = [
+@@ -4497,7 +4497,7 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-cache"
@@ -1027,7 +1027,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "lru",
   "sha1 0.10.6",
-@@ -4502,7 +4502,7 @@ dependencies = [
+@@ -4506,7 +4506,7 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-cargo-bin"
@@ -1036,7 +1036,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "assert_cmd",
   "runfiles",
-@@ -4511,7 +4511,7 @@ dependencies = [
+@@ -4515,7 +4515,7 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-cli"
@@ -1045,7 +1045,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "clap",
   "codex-protocol",
-@@ -4523,15 +4523,15 @@ dependencies = [
+@@ -4527,15 +4527,15 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-elapsed"
@@ -1064,7 +1064,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-utils-absolute-path",
   "dirs",
-@@ -4541,7 +4541,7 @@ dependencies = [
+@@ -4545,7 +4545,7 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-image"
@@ -1073,7 +1073,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "base64 0.22.1",
   "codex-utils-cache",
-@@ -4554,7 +4554,7 @@ dependencies = [
+@@ -4558,7 +4558,7 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-json-to-toml"
@@ -1082,7 +1082,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "pretty_assertions",
   "serde_json",
-@@ -4563,7 +4563,7 @@ dependencies = [
+@@ -4567,7 +4567,7 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-oss"
@@ -1091,7 +1091,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-core",
   "codex-lmstudio",
-@@ -4573,7 +4573,7 @@ dependencies = [
+@@ -4577,7 +4577,7 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-output-truncation"
@@ -1100,7 +1100,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-protocol",
   "codex-utils-string",
-@@ -4582,7 +4582,7 @@ dependencies = [
+@@ -4586,7 +4586,7 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-path"
@@ -1109,7 +1109,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-utils-absolute-path",
   "dunce",
-@@ -4592,7 +4592,7 @@ dependencies = [
+@@ -4596,7 +4596,7 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-path-uri"
@@ -1118,7 +1118,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "base64 0.22.1",
   "codex-utils-absolute-path",
-@@ -4608,7 +4608,7 @@ dependencies = [
+@@ -4612,7 +4612,7 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-plugins"
@@ -1127,7 +1127,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-exec-server",
   "codex-exec-server-protocol",
-@@ -4622,7 +4622,7 @@ dependencies = [
+@@ -4626,7 +4626,7 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-pty"
@@ -1136,7 +1136,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "filedescriptor",
-@@ -4638,7 +4638,7 @@ dependencies = [
+@@ -4642,7 +4642,7 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-readiness"
@@ -1145,7 +1145,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "assert_matches",
   "thiserror 2.0.18",
-@@ -4648,14 +4648,14 @@ dependencies = [
+@@ -4652,14 +4652,14 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-rustls-provider"
@@ -1162,7 +1162,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-protocol",
   "codex-utils-absolute-path",
-@@ -4664,7 +4664,7 @@ dependencies = [
+@@ -4668,7 +4668,7 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-sleep-inhibitor"
@@ -1171,7 +1171,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "core-foundation 0.9.4",
   "libc",
-@@ -4674,14 +4674,14 @@ dependencies = [
+@@ -4678,14 +4678,14 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-stream-parser"
@@ -1188,7 +1188,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "pretty_assertions",
   "regex-lite",
-@@ -4691,14 +4691,14 @@ dependencies = [
+@@ -4695,14 +4695,14 @@ dependencies = [
  
  [[package]]
  name = "codex-utils-template"
@@ -1205,7 +1205,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "pretty_assertions",
   "v8",
-@@ -4706,7 +4706,7 @@ dependencies = [
+@@ -4710,7 +4710,7 @@ dependencies = [
  
  [[package]]
  name = "codex-web-search-extension"
@@ -1214,7 +1214,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-api",
   "codex-core",
-@@ -4727,7 +4727,7 @@ dependencies = [
+@@ -4731,7 +4731,7 @@ dependencies = [
  
  [[package]]
  name = "codex-websocket-client"
@@ -1223,7 +1223,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-http-client",
   "codex-utils-rustls-provider",
-@@ -4743,7 +4743,7 @@ dependencies = [
+@@ -4747,7 +4747,7 @@ dependencies = [
  
  [[package]]
  name = "codex-windows-sandbox"
@@ -1232,7 +1232,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "base64 0.22.1",
-@@ -4769,7 +4769,7 @@ dependencies = [
+@@ -4773,7 +4773,7 @@ dependencies = [
  
  [[package]]
  name = "codex-workload-identity"
@@ -1241,7 +1241,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "codex-http-client",
   "pretty_assertions",
-@@ -5009,7 +5009,7 @@ dependencies = [
+@@ -5013,7 +5013,7 @@ dependencies = [
  
  [[package]]
  name = "core_test_support"
@@ -1250,7 +1250,7 @@ index 13524e63e..4cb1d3111 100644
  dependencies = [
   "anyhow",
   "assert_cmd",
-@@ -9236,7 +9236,7 @@ dependencies = [
+@@ -9241,7 +9241,7 @@ dependencies = [
  
  [[package]]
  name = "mcp_test_support"
@@ -1260,10 +1260,10 @@ index 13524e63e..4cb1d3111 100644
   "anyhow",
   "codex-login",
 diff --git a/codex-rs/app-server/Cargo.toml b/codex-rs/app-server/Cargo.toml
-index 32ad4ea90..7ce47f7da 100644
+index 98dfb724c..205ea6a14 100644
 --- a/codex-rs/app-server/Cargo.toml
 +++ b/codex-rs/app-server/Cargo.toml
-@@ -73,6 +73,7 @@ codex-memories-write = { workspace = true }
+@@ -74,6 +74,7 @@ codex-memories-write = { workspace = true }
  codex-mcp = { workspace = true }
  codex-mcp-extension = { workspace = true }
  codex-model-provider = { workspace = true }
@@ -1271,7 +1271,7 @@ index 32ad4ea90..7ce47f7da 100644
  codex-models-manager = { workspace = true }
  codex-protocol = { workspace = true }
  codex-queue-extension = { workspace = true }
-@@ -123,7 +124,6 @@ axum = { workspace = true, default-features = false, features = [
+@@ -124,7 +125,6 @@ axum = { workspace = true, default-features = false, features = [
      "tokio",
  ] }
  base64 = { workspace = true }
@@ -1566,7 +1566,7 @@ index 1063e64c3..85cd71566 100644
 +    }
 +}
 diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
-index 616225839..2525ae328 100644
+index f2da39044..82d2ca630 100644
 --- a/codex-rs/app-server/src/request_processors.rs
 +++ b/codex-rs/app-server/src/request_processors.rs
 @@ -4,7 +4,7 @@ use crate::command_exec::StartCommandExecParams;
@@ -1579,10 +1579,10 @@ index 616225839..2525ae328 100644
  use crate::outgoing_message::ConnectionRequestId;
  use crate::outgoing_message::OutgoingMessageSender;
 diff --git a/codex-rs/app-server/src/request_processors/catalog_processor.rs b/codex-rs/app-server/src/request_processors/catalog_processor.rs
-index d56df03f5..174cd3100 100644
+index 7b11a3078..0c6128a6c 100644
 --- a/codex-rs/app-server/src/request_processors/catalog_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/catalog_processor.rs
-@@ -162,6 +162,7 @@ impl CatalogRequestProcessor {
+@@ -169,6 +169,7 @@ impl CatalogRequestProcessor {
          params: ModelListParams,
      ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
          Self::list_models(
@@ -1590,7 +1590,7 @@ index d56df03f5..174cd3100 100644
              self.thread_manager.clone(),
              self.config.http_client_factory(),
              params,
-@@ -254,6 +255,7 @@ impl CatalogRequestProcessor {
+@@ -239,6 +240,7 @@ impl CatalogRequestProcessor {
      }
  
      async fn list_models(
@@ -1598,7 +1598,7 @@ index d56df03f5..174cd3100 100644
          thread_manager: Arc<ThreadManager>,
          http_client_factory: codex_http_client::HttpClientFactory,
          params: ModelListParams,
-@@ -263,7 +265,8 @@ impl CatalogRequestProcessor {
+@@ -248,7 +250,8 @@ impl CatalogRequestProcessor {
              cursor,
              include_hidden,
          } = params;
@@ -1609,10 +1609,10 @@ index d56df03f5..174cd3100 100644
              include_hidden.unwrap_or(false),
              http_client_factory,
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 4bb5e435f..54fc4f41c 100644
+index 2a17787f9..b34b4eec5 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -1512,6 +1512,11 @@ impl ThreadRequestProcessor {
+@@ -1603,6 +1603,11 @@ impl ThreadRequestProcessor {
          developer_instructions: Option<String>,
          personality: Option<Personality>,
      ) -> ConfigOverrides {
@@ -1625,10 +1625,10 @@ index 4bb5e435f..54fc4f41c 100644
              model,
              model_provider,
 diff --git a/codex-rs/core/src/thread_manager.rs b/codex-rs/core/src/thread_manager.rs
-index 42b14e340..b5d6d8f07 100644
+index fb8988293..fc31e0ffe 100644
 --- a/codex-rs/core/src/thread_manager.rs
 +++ b/codex-rs/core/src/thread_manager.rs
-@@ -332,6 +332,9 @@ pub(crate) struct ThreadManagerState {
+@@ -335,6 +335,9 @@ pub(crate) struct ThreadManagerState {
      thread_created_tx: broadcast::Sender<ThreadId>,
      thread_id_generator: ThreadIdGenerator,
      auth_manager: Arc<AuthManager>,
@@ -1638,7 +1638,7 @@ index 42b14e340..b5d6d8f07 100644
      models_manager: SharedModelsManager,
      environment_manager: Arc<EnvironmentManager>,
      starting_mcp_runtimes: std::sync::Mutex<Vec<std::sync::Weak<AtomicBool>>>,
-@@ -459,6 +462,7 @@ impl ThreadManager {
+@@ -462,6 +465,7 @@ impl ThreadManager {
                  threads: Arc::new(RwLock::new(HashMap::new())),
                  thread_created_tx,
                  thread_id_generator: default_thread_id_generator(),
@@ -1646,7 +1646,7 @@ index 42b14e340..b5d6d8f07 100644
                  models_manager,
                  environment_manager,
                  starting_mcp_runtimes: std::sync::Mutex::new(Vec::new()),
-@@ -605,6 +609,7 @@ impl ThreadManager {
+@@ -608,6 +612,7 @@ impl ThreadManager {
                  threads: Arc::new(RwLock::new(HashMap::new())),
                  thread_created_tx,
                  thread_id_generator: default_thread_id_generator(),
@@ -1654,7 +1654,7 @@ index 42b14e340..b5d6d8f07 100644
                  models_manager: create_model_provider(provider, Some(auth_manager.clone()))
                      .models_manager(codex_home, /*config_model_catalog*/ None),
                  environment_manager,
-@@ -1803,13 +1808,18 @@ impl ThreadManagerState {
+@@ -1841,13 +1846,18 @@ impl ThreadManagerState {
              starting.retain(|runtime| runtime.strong_count() != 0);
              starting.push(Arc::downgrade(&source_changed_during_startup));
          }
@@ -1678,11 +1678,11 @@ index 42b14e340..b5d6d8f07 100644
 2.54.0
 
 
-From ae73264073b70f506c96410f133a82c3b1155ca1 Mon Sep 17 00:00:00 2001
+From 8b4258987756ac7924a5fbb2d4e9d6444638db36 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
 Date: Wed, 19 Aug 2026 11:43:47 +0200
-Subject: [PATCH 02/10] codex-swapper mod: disambiguate colliding provider
- model ids in the picker
+Subject: [PATCH 2/9] codex-swapper mod: disambiguate colliding provider model
+ ids in the picker
 
 The desktop picker keys selection on the model slug, so two catalog entries
 with the same slug (e.g. OpenAI's gpt-5.6-luna and opencode-go's
@@ -1980,10 +1980,10 @@ index 45835c37c..93b6a52b0 100644
              ..remote
          }
 diff --git a/codex-rs/models-manager/src/manager_tests.rs b/codex-rs/models-manager/src/manager_tests.rs
-index 0768d1e4c..3ba24a1e6 100644
+index 8669a0a34..67cdf8c11 100644
 --- a/codex-rs/models-manager/src/manager_tests.rs
 +++ b/codex-rs/models-manager/src/manager_tests.rs
-@@ -762,7 +762,9 @@ async fn get_model_info_matches_namespaced_suffix() {
+@@ -760,7 +760,9 @@ async fn get_model_info_matches_namespaced_suffix() {
  
      let model_info = manager.get_model_info(&namespaced_model, &config).await;
  
@@ -1994,7 +1994,7 @@ index 0768d1e4c..3ba24a1e6 100644
      assert!(model_info.supports_image_detail_original);
      assert!(!model_info.used_fallback_model_metadata);
  }
-@@ -778,7 +780,7 @@ async fn get_model_info_matches_hyphenated_provider_namespace_suffix() {
+@@ -776,7 +778,7 @@ async fn get_model_info_matches_hyphenated_provider_namespace_suffix() {
  
      let model_info = manager.get_model_info(&namespaced_model, &config).await;
  
@@ -2007,10 +2007,10 @@ index 0768d1e4c..3ba24a1e6 100644
 2.54.0
 
 
-From 647bbf0a26fd9f026a3736fa123883b382b6695e Mon Sep 17 00:00:00 2001
+From 5245d6781499bff0bca868a757731092b135fdfe Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
 Date: Wed, 19 Aug 2026 15:36:34 +0200
-Subject: [PATCH 03/10] codex-swapper mod: OpenCode Go key failover on usage
+Subject: [PATCH 3/9] codex-swapper mod: OpenCode Go key failover on usage
  exhaustion
 
 When the opencode-go gateway rejects a request with 401/402/403/429, rotate
@@ -2143,10 +2143,10 @@ index da3b6dad3..e920fdf98 100644
                      unauthorized_transport @ TransportError::Http { status, .. },
                  )) if status == StatusCode::UNAUTHORIZED => {
 diff --git a/codex-rs/core/src/client_tests.rs b/codex-rs/core/src/client_tests.rs
-index b0f521979..86b8e61cd 100644
+index 41c7dc1ab..fd36b3e0b 100644
 --- a/codex-rs/core/src/client_tests.rs
 +++ b/codex-rs/core/src/client_tests.rs
-@@ -889,3 +889,65 @@ async fn non_chatgpt_codex_endpoints_omit_attestation_generation() {
+@@ -888,3 +888,65 @@ async fn non_chatgpt_codex_endpoints_omit_attestation_generation() {
      );
      assert_eq!(attestation_calls.load(Ordering::Relaxed), 0);
  }
@@ -2216,10 +2216,10 @@ index b0f521979..86b8e61cd 100644
 2.54.0
 
 
-From 1efb81f15de608575b3fd89f255fecf4a45f2a9b Mon Sep 17 00:00:00 2001
+From 096049ab2939ec2ac15b754d2cbd23f0210a218c Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
 Date: Wed, 19 Aug 2026 16:53:44 +0200
-Subject: [PATCH 04/10] codex-swapper mod: omit client_metadata for non-OpenAI
+Subject: [PATCH 4/9] codex-swapper mod: omit client_metadata for non-OpenAI
  providers + gate hosted web_search on model support
 
 - core/src/client.rs: only attach Responses API client_metadata for the OpenAI
@@ -2253,10 +2253,10 @@ index e920fdf98..1795c96fc 100644
          Ok(request)
      }
 diff --git a/codex-rs/core/src/client_tests.rs b/codex-rs/core/src/client_tests.rs
-index 86b8e61cd..82e84f188 100644
+index fd36b3e0b..3aad9b382 100644
 --- a/codex-rs/core/src/client_tests.rs
 +++ b/codex-rs/core/src/client_tests.rs
-@@ -951,3 +951,48 @@ fn provider_is_opencode_go_matches_only_gateway_url() {
+@@ -950,3 +950,48 @@ fn provider_is_opencode_go_matches_only_gateway_url() {
      );
      assert!(super::provider_is_opencode_go(&trailing_slash));
  }
@@ -2306,7 +2306,7 @@ index 86b8e61cd..82e84f188 100644
 +    Ok(())
 +}
 diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
-index e094213a2..db5d9e30b 100644
+index 3da01c002..5bace0ae7 100644
 --- a/codex-rs/core/src/tools/spec_plan.rs
 +++ b/codex-rs/core/src/tools/spec_plan.rs
 @@ -562,7 +562,12 @@ fn hosted_model_tool_specs(
@@ -2326,10 +2326,10 @@ index e094213a2..db5d9e30b 100644
 2.54.0
 
 
-From 489022aa9e08cdebdc452485bbae126ba21fda13 Mon Sep 17 00:00:00 2001
+From 411cd75fe448aeeb7d7936968e809f0364e2eb13 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
 Date: Wed, 19 Aug 2026 17:22:21 +0200
-Subject: [PATCH 05/10] codex-swapper mod: per-model supports_namespace_tools
+Subject: [PATCH 5/9] codex-swapper mod: per-model supports_namespace_tools
  flag (grok-4.5 on opencode-go rejects namespace tools)
 
 - protocol/src/openai_models.rs: add ModelInfo.supports_namespace_tools (default true)
@@ -2354,10 +2354,10 @@ Subject: [PATCH 05/10] codex-swapper mod: per-model supports_namespace_tools
  14 files changed, 29 insertions(+), 1 deletion(-)
 
 diff --git a/codex-rs/app-server/tests/common/models_cache.rs b/codex-rs/app-server/tests/common/models_cache.rs
-index 220d4615c..9a37053db 100644
+index 2d62aa196..eb602e731 100644
 --- a/codex-rs/app-server/tests/common/models_cache.rs
 +++ b/codex-rs/app-server/tests/common/models_cache.rs
-@@ -64,6 +64,7 @@ fn preset_to_info(preset: &ModelPreset, priority: i32) -> ModelInfo {
+@@ -65,6 +65,7 @@ fn preset_to_info(preset: &ModelPreset, priority: i32) -> ModelInfo {
          input_modalities: default_input_modalities(),
          used_fallback_model_metadata: false,
          supports_search_tool: false,
@@ -2366,10 +2366,10 @@ index 220d4615c..9a37053db 100644
          node_repl_auto_review_required: false,
          node_repl_disabled: false,
 diff --git a/codex-rs/codex-api/tests/models_integration.rs b/codex-rs/codex-api/tests/models_integration.rs
-index 6d59fd497..6613da9c1 100644
+index 3b7f74c4a..27388f507 100644
 --- a/codex-rs/codex-api/tests/models_integration.rs
 +++ b/codex-rs/codex-api/tests/models_integration.rs
-@@ -102,6 +102,7 @@ async fn models_client_hits_models_endpoint() {
+@@ -101,6 +101,7 @@ async fn models_client_hits_models_endpoint() {
              input_modalities: default_input_modalities(),
              used_fallback_model_metadata: false,
              supports_search_tool: false,
@@ -2378,7 +2378,7 @@ index 6d59fd497..6613da9c1 100644
              node_repl_auto_review_required: true,
              node_repl_disabled: true,
 diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
-index db5d9e30b..8ac6836a8 100644
+index 5bace0ae7..079f27d9c 100644
 --- a/codex-rs/core/src/tools/spec_plan.rs
 +++ b/codex-rs/core/src/tools/spec_plan.rs
 @@ -595,7 +595,12 @@ pub(crate) fn tool_suggest_enabled(turn_context: &TurnContext) -> bool {
@@ -2396,10 +2396,10 @@ index db5d9e30b..8ac6836a8 100644
  
  fn multi_agent_v2_enabled(turn_context: &TurnContext) -> bool {
 diff --git a/codex-rs/core/tests/suite/auto_review.rs b/codex-rs/core/tests/suite/auto_review.rs
-index 513a7b54c..610cff428 100644
+index d83561155..bc93dd73d 100644
 --- a/codex-rs/core/tests/suite/auto_review.rs
 +++ b/codex-rs/core/tests/suite/auto_review.rs
-@@ -258,6 +258,7 @@ fn remote_model_with_auto_review_override(slug: &str, review_model: &str) -> Mod
+@@ -361,6 +361,7 @@ fn remote_model_with_auto_review_override(slug: &str, review_model: &str) -> Mod
          input_modalities: default_input_modalities(),
          used_fallback_model_metadata: false,
          supports_search_tool: false,
@@ -2408,10 +2408,10 @@ index 513a7b54c..610cff428 100644
          node_repl_auto_review_required: false,
          node_repl_disabled: false,
 diff --git a/codex-rs/core/tests/suite/model_switching.rs b/codex-rs/core/tests/suite/model_switching.rs
-index b233c7ccc..1c85809f5 100644
+index 699696289..6b4a41924 100644
 --- a/codex-rs/core/tests/suite/model_switching.rs
 +++ b/codex-rs/core/tests/suite/model_switching.rs
-@@ -111,6 +111,7 @@ fn test_model_info(
+@@ -121,6 +121,7 @@ fn test_model_info(
          input_modalities,
          used_fallback_model_metadata: false,
          supports_search_tool: false,
@@ -2419,7 +2419,7 @@ index b233c7ccc..1c85809f5 100644
          use_responses_lite: false,
          node_repl_auto_review_required: false,
          node_repl_disabled: false,
-@@ -1183,6 +1184,7 @@ async fn model_switch_to_smaller_model_updates_token_context_window() -> Result<
+@@ -1336,6 +1337,7 @@ async fn model_switch_to_smaller_model_updates_token_context_window() -> Result<
          input_modalities: default_input_modalities(),
          used_fallback_model_metadata: false,
          supports_search_tool: false,
@@ -2428,10 +2428,10 @@ index b233c7ccc..1c85809f5 100644
          node_repl_auto_review_required: false,
          node_repl_disabled: false,
 diff --git a/codex-rs/core/tests/suite/models_cache_ttl.rs b/codex-rs/core/tests/suite/models_cache_ttl.rs
-index 2241da101..2f44cf642 100644
+index b618acb3e..da2671812 100644
 --- a/codex-rs/core/tests/suite/models_cache_ttl.rs
 +++ b/codex-rs/core/tests/suite/models_cache_ttl.rs
-@@ -534,6 +534,7 @@ fn test_remote_model(slug: &str, priority: i32) -> ModelInfo {
+@@ -535,6 +535,7 @@ fn test_remote_model(slug: &str, priority: i32) -> ModelInfo {
          input_modalities: default_input_modalities(),
          used_fallback_model_metadata: false,
          supports_search_tool: false,
@@ -2440,10 +2440,10 @@ index 2241da101..2f44cf642 100644
          node_repl_auto_review_required: false,
          node_repl_disabled: false,
 diff --git a/codex-rs/core/tests/suite/personality.rs b/codex-rs/core/tests/suite/personality.rs
-index 5e8b7f28a..51eb092e5 100644
+index 33d91ffd8..e936a937f 100644
 --- a/codex-rs/core/tests/suite/personality.rs
 +++ b/codex-rs/core/tests/suite/personality.rs
-@@ -667,6 +667,7 @@ async fn remote_model_friendly_personality_instructions_with_feature() -> anyhow
+@@ -668,6 +668,7 @@ async fn remote_model_friendly_personality_instructions_with_feature() -> anyhow
          input_modalities: default_input_modalities(),
          used_fallback_model_metadata: false,
          supports_search_tool: false,
@@ -2451,7 +2451,7 @@ index 5e8b7f28a..51eb092e5 100644
          use_responses_lite: false,
          node_repl_auto_review_required: false,
          node_repl_disabled: false,
-@@ -792,6 +793,7 @@ async fn user_turn_personality_remote_model_template_includes_update_message() -
+@@ -794,6 +795,7 @@ async fn user_turn_personality_remote_model_template_includes_update_message() -
          input_modalities: default_input_modalities(),
          used_fallback_model_metadata: false,
          supports_search_tool: false,
@@ -2460,10 +2460,10 @@ index 5e8b7f28a..51eb092e5 100644
          node_repl_auto_review_required: false,
          node_repl_disabled: false,
 diff --git a/codex-rs/core/tests/suite/remote_models.rs b/codex-rs/core/tests/suite/remote_models.rs
-index 5268fa319..7c0d13eb7 100644
+index 69a62cf5c..b3951f9c9 100644
 --- a/codex-rs/core/tests/suite/remote_models.rs
 +++ b/codex-rs/core/tests/suite/remote_models.rs
-@@ -497,6 +497,7 @@ async fn remote_models_remote_model_uses_unified_exec() -> Result<()> {
+@@ -501,6 +501,7 @@ async fn remote_models_remote_model_uses_unified_exec() -> Result<()> {
          input_modalities: default_input_modalities(),
          used_fallback_model_metadata: false,
          supports_search_tool: false,
@@ -2471,7 +2471,7 @@ index 5268fa319..7c0d13eb7 100644
          use_responses_lite: false,
          node_repl_auto_review_required: false,
          node_repl_disabled: false,
-@@ -752,6 +753,7 @@ async fn remote_models_apply_legacy_instructions() -> Result<()> {
+@@ -755,6 +756,7 @@ async fn remote_models_apply_legacy_instructions() -> Result<()> {
          input_modalities: default_input_modalities(),
          used_fallback_model_metadata: false,
          supports_search_tool: false,
@@ -2479,7 +2479,7 @@ index 5268fa319..7c0d13eb7 100644
          use_responses_lite: false,
          node_repl_auto_review_required: false,
          node_repl_disabled: false,
-@@ -1333,6 +1335,7 @@ fn test_remote_model_with_policy(
+@@ -1337,6 +1339,7 @@ fn test_remote_model_with_policy(
          input_modalities: default_input_modalities(),
          used_fallback_model_metadata: false,
          supports_search_tool: false,
@@ -2488,10 +2488,10 @@ index 5268fa319..7c0d13eb7 100644
          node_repl_auto_review_required: false,
          node_repl_disabled: false,
 diff --git a/codex-rs/core/tests/suite/rmcp_client.rs b/codex-rs/core/tests/suite/rmcp_client.rs
-index 098c5d74c..9963dba78 100644
+index 8b2cc86f8..07624862f 100644
 --- a/codex-rs/core/tests/suite/rmcp_client.rs
 +++ b/codex-rs/core/tests/suite/rmcp_client.rs
-@@ -2292,6 +2292,7 @@ async fn stdio_image_responses_are_sanitized_for_text_only_model() -> anyhow::Re
+@@ -2291,6 +2291,7 @@ async fn stdio_image_responses_are_sanitized_for_text_only_model() -> anyhow::Re
                  input_modalities: vec![InputModality::Text],
                  used_fallback_model_metadata: false,
                  supports_search_tool: false,
@@ -2500,10 +2500,10 @@ index 098c5d74c..9963dba78 100644
                  node_repl_auto_review_required: false,
                  node_repl_disabled: false,
 diff --git a/codex-rs/core/tests/suite/spawn_agent_description.rs b/codex-rs/core/tests/suite/spawn_agent_description.rs
-index 8cb49c11e..06f7c02b2 100644
+index 34e7ff0ea..6c54250f1 100644
 --- a/codex-rs/core/tests/suite/spawn_agent_description.rs
 +++ b/codex-rs/core/tests/suite/spawn_agent_description.rs
-@@ -73,6 +73,7 @@ fn test_model_info(
+@@ -91,6 +91,7 @@ fn test_model_info(
          input_modalities: default_input_modalities(),
          used_fallback_model_metadata: false,
          supports_search_tool: false,
@@ -2512,10 +2512,10 @@ index 8cb49c11e..06f7c02b2 100644
          node_repl_auto_review_required: false,
          node_repl_disabled: false,
 diff --git a/codex-rs/core/tests/suite/view_image.rs b/codex-rs/core/tests/suite/view_image.rs
-index 7607d48da..e0a66bfff 100644
+index 89b8936a8..913a222d3 100644
 --- a/codex-rs/core/tests/suite/view_image.rs
 +++ b/codex-rs/core/tests/suite/view_image.rs
-@@ -1617,6 +1617,7 @@ async fn view_image_tool_returns_unsupported_message_for_text_only_model() -> an
+@@ -1619,6 +1619,7 @@ async fn view_image_tool_returns_unsupported_message_for_text_only_model() -> an
          input_modalities: vec![InputModality::Text],
          used_fallback_model_metadata: false,
          supports_search_tool: false,
@@ -2524,10 +2524,10 @@ index 7607d48da..e0a66bfff 100644
          node_repl_auto_review_required: false,
          node_repl_disabled: false,
 diff --git a/codex-rs/models-manager/src/model_info.rs b/codex-rs/models-manager/src/model_info.rs
-index e9dc94ff4..bca77c594 100644
+index eaf8d3274..38b149a0f 100644
 --- a/codex-rs/models-manager/src/model_info.rs
 +++ b/codex-rs/models-manager/src/model_info.rs
-@@ -174,6 +174,7 @@ pub fn model_info_from_slug(slug: &str) -> ModelInfo {
+@@ -175,6 +175,7 @@ pub fn model_info_from_slug(slug: &str) -> ModelInfo {
          input_modalities: default_input_modalities(),
          used_fallback_model_metadata: true, // this is the fallback model metadata
          supports_search_tool: false,
@@ -2536,10 +2536,10 @@ index e9dc94ff4..bca77c594 100644
          node_repl_auto_review_required: false,
          node_repl_disabled: false,
 diff --git a/codex-rs/protocol/src/openai_models.rs b/codex-rs/protocol/src/openai_models.rs
-index 697bc1360..a84c9f58d 100644
+index 8192e50fc..e6a7a6104 100644
 --- a/codex-rs/protocol/src/openai_models.rs
 +++ b/codex-rs/protocol/src/openai_models.rs
-@@ -451,6 +451,12 @@ pub struct ModelInfo {
+@@ -456,6 +456,12 @@ pub struct ModelInfo {
      pub used_fallback_model_metadata: bool,
      #[serde(default)]
      pub supports_search_tool: bool,
@@ -2552,7 +2552,7 @@ index 697bc1360..a84c9f58d 100644
      #[serde(default)]
      pub use_responses_lite: bool,
      #[serde(default)]
-@@ -894,6 +900,7 @@ mod tests {
+@@ -921,6 +927,7 @@ mod tests {
              input_modalities: default_input_modalities(),
              used_fallback_model_metadata: false,
              supports_search_tool: false,
@@ -2561,10 +2561,10 @@ index 697bc1360..a84c9f58d 100644
              node_repl_auto_review_required: false,
              node_repl_disabled: false,
 diff --git a/codex-rs/tools/src/tool_config_tests.rs b/codex-rs/tools/src/tool_config_tests.rs
-index 49b8bee71..476fa71ba 100644
+index 5bcc11fe5..d3a8b9fd1 100644
 --- a/codex-rs/tools/src/tool_config_tests.rs
 +++ b/codex-rs/tools/src/tool_config_tests.rs
-@@ -47,6 +47,7 @@ fn model_with_shell_type(shell_type: ConfigShellToolType) -> ModelInfo {
+@@ -46,6 +46,7 @@ fn model_with_shell_type(shell_type: ConfigShellToolType) -> ModelInfo {
          input_modalities: codex_protocol::openai_models::default_input_modalities(),
          used_fallback_model_metadata: false,
          supports_search_tool: false,
@@ -2576,10 +2576,10 @@ index 49b8bee71..476fa71ba 100644
 2.54.0
 
 
-From 6e11e883a3dc83be69cfd0c79075d693ee189eab Mon Sep 17 00:00:00 2001
+From b8a1f6052ac3cb7c7c4366a2b72d5be0c2bbe134 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
 Date: Wed, 19 Aug 2026 18:24:49 +0200
-Subject: [PATCH 06/10] codex-swapper mod: keep OpenCode Go key failover armed
+Subject: [PATCH 6/9] codex-swapper mod: keep OpenCode Go key failover armed
  when provider is routed via the US-forwarding loopback proxy
 
 ---
@@ -2609,10 +2609,10 @@ index 1795c96fc..0e426ad7c 100644
  
  /// Rotates the preferred OpenCode Go key between `1` and `2` in `home`.
 diff --git a/codex-rs/core/src/client_tests.rs b/codex-rs/core/src/client_tests.rs
-index 82e84f188..db4db3265 100644
+index 3aad9b382..0c2b69dc5 100644
 --- a/codex-rs/core/src/client_tests.rs
 +++ b/codex-rs/core/src/client_tests.rs
-@@ -950,6 +950,27 @@ fn provider_is_opencode_go_matches_only_gateway_url() {
+@@ -949,6 +949,27 @@ fn provider_is_opencode_go_matches_only_gateway_url() {
          None,
      );
      assert!(super::provider_is_opencode_go(&trailing_slash));
@@ -2644,11 +2644,11 @@ index 82e84f188..db4db3265 100644
 2.54.0
 
 
-From 308ff33a0d597f1aec0515d2656722d60642528b Mon Sep 17 00:00:00 2001
+From c2429e2ad06642bfbceb95252c614c190b6382fb Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
 Date: Wed, 19 Aug 2026 23:57:26 +0200
-Subject: [PATCH 07/10] codex-swapper mod: match the OpenCode Go provider
- family (incl. 'OpenCode Go US') for loopback failover arming
+Subject: [PATCH 7/9] codex-swapper mod: match the OpenCode Go provider family
+ (incl. 'OpenCode Go US') for loopback failover arming
 
 ---
  codex-rs/core/src/client.rs       |  4 +++-
@@ -2671,10 +2671,10 @@ index 0e426ad7c..9d18b0d8b 100644
                      && url.ends_with("/v1"))
          })
 diff --git a/codex-rs/core/src/client_tests.rs b/codex-rs/core/src/client_tests.rs
-index db4db3265..72e11f4ee 100644
+index 0c2b69dc5..eee4207ad 100644
 --- a/codex-rs/core/src/client_tests.rs
 +++ b/codex-rs/core/src/client_tests.rs
-@@ -962,6 +962,16 @@ fn provider_is_opencode_go_matches_only_gateway_url() {
+@@ -961,6 +961,16 @@ fn provider_is_opencode_go_matches_only_gateway_url() {
      );
      assert!(super::provider_is_opencode_go(&via_loopback_proxy));
  
@@ -2695,10 +2695,10 @@ index db4db3265..72e11f4ee 100644
 2.54.0
 
 
-From c097e783f9b29520a339f77424d1937258e17831 Mon Sep 17 00:00:00 2001
+From 54bc973e2683f1b1a3f55f1829ba0f12a22af051 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
 Date: Thu, 20 Aug 2026 15:34:03 +0200
-Subject: [PATCH 08/10] codex-swapper mod: keep bare colliding models on active
+Subject: [PATCH 8/9] codex-swapper mod: keep bare colliding models on active
  provider
 
 ---
@@ -2820,42 +2820,10 @@ index 012da390f..dcdde3c01 100644
 2.54.0
 
 
-From fd08120884a60b513534c2425a5a897cab53a66f Mon Sep 17 00:00:00 2001
-From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
-Date: Fri, 21 Aug 2026 15:45:54 +0200
-Subject: [PATCH 09/10] codex-swapper mod: tolerate upstream models payloads
- without supports_parallel_tool_calls
-
-OpenAI changed their /models payload mid-day 2026-08-21; fresh
-models_cache.json entries omitted the field and the strict deserializer
-rejected the whole cache ("failed to load models cache"), degrading every
-model to fallback metadata. Default the field like its neighbours.
-
-Co-authored-by: ox-alpha <noreply@anoma.ly>
----
- codex-rs/protocol/src/openai_models.rs | 1 +
- 1 file changed, 1 insertion(+)
-
-diff --git a/codex-rs/protocol/src/openai_models.rs b/codex-rs/protocol/src/openai_models.rs
-index a84c9f58d..c7318507b 100644
---- a/codex-rs/protocol/src/openai_models.rs
-+++ b/codex-rs/protocol/src/openai_models.rs
-@@ -420,6 +420,7 @@ pub struct ModelInfo {
-     #[serde(default)]
-     pub web_search_tool_type: WebSearchToolType,
-     pub truncation_policy: TruncationPolicyConfig,
-+    #[serde(default)]
-     pub supports_parallel_tool_calls: bool,
-     #[serde(default)]
-     pub supports_image_detail_original: bool,
--- 
-2.54.0
-
-
-From a0909a00cb335b54d1efb5e647ce3a505dff139b Mon Sep 17 00:00:00 2001
+From d68f75f2c38caa8d2e983d5b1319672eaf299061 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Pablo=20Barham=20Alz=C3=A1s?= <pablobarhamalzas@gmail.com>
 Date: Fri, 21 Aug 2026 15:46:26 +0200
-Subject: [PATCH 10/10] codex-swapper mod: per-model request_non_streaming +
+Subject: [PATCH 9/9] codex-swapper mod: per-model request_non_streaming +
  orphan-delta lifecycle synthesis
 
 ox-alpha (stealth preview on the opencode-go gateway) advertises chat
@@ -3197,25 +3165,25 @@ index 9d18b0d8b..97e9a5e2a 100644
                          inference_trace_attempt.record_cancelled(
                              STREAM_DROPPED_REASON,
 diff --git a/codex-rs/models-manager/src/model_info.rs b/codex-rs/models-manager/src/model_info.rs
-index bca77c594..813c3f08e 100644
+index 38b149a0f..1330f2654 100644
 --- a/codex-rs/models-manager/src/model_info.rs
 +++ b/codex-rs/models-manager/src/model_info.rs
-@@ -164,6 +164,7 @@ pub fn model_info_from_slug(slug: &str) -> ModelInfo {
+@@ -165,6 +165,7 @@ pub fn model_info_from_slug(slug: &str) -> ModelInfo {
+         apply_patch_tool_type: None,
          web_search_tool_type: WebSearchToolType::Text,
          truncation_policy: TruncationPolicyConfig::bytes(/*limit*/ 10_000),
-         supports_parallel_tool_calls: false,
 +        request_non_streaming: false,
          supports_image_detail_original: false,
          context_window: Some(272_000),
          max_context_window: Some(272_000),
 diff --git a/codex-rs/protocol/src/openai_models.rs b/codex-rs/protocol/src/openai_models.rs
-index c7318507b..f436e8db7 100644
+index e6a7a6104..dfc265617 100644
 --- a/codex-rs/protocol/src/openai_models.rs
 +++ b/codex-rs/protocol/src/openai_models.rs
-@@ -422,6 +422,12 @@ pub struct ModelInfo {
-     pub truncation_policy: TruncationPolicyConfig,
+@@ -426,6 +426,12 @@ pub struct ModelInfo {
      #[serde(default)]
-     pub supports_parallel_tool_calls: bool,
+     pub web_search_tool_type: WebSearchToolType,
+     pub truncation_policy: TruncationPolicyConfig,
 +    /// Send a single non-streaming POST and materialize the response instead
 +    /// of consuming SSE. For upstreams whose streaming implementation is
 +    /// incomplete (e.g. ox-alpha on the opencode-go gateway emits no item

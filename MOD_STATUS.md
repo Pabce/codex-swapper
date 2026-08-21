@@ -1,12 +1,29 @@
 # MOD_STATUS — codex-swapper mod pinned state
 
-Last updated: 2026-08-20T12:15:00Z (live effort-array audit; muse-spark-1.2 removed)
+Last updated: 2026-08-21 (re-pin to 0.148.0-alpha.21)
 
 ## Pinned release
+- App build: bundled CLI updated by app auto-update on 2026-08-20/21
+- Bundled CLI (app Resources/codex): 0.148.0-alpha.21
+- Upstream tag: rust-v0.148.0-alpha.21
+- Fork branch: mod-0.148.0-alpha.21
+- Mod commits replayed: 9 of 10 (fd0812088 dropped as obsolete, see below);
+  tip d68f75f2c; base = rust-v0.148.0-alpha.21
+
+### alpha.15 -> alpha.21 re-pin notes (2026-08-21)
+- fd0812088 ("tolerate missing supports_parallel_tool_calls") is OBSOLETE:
+  upstream deleted the ModelInfo field entirely between alphas (moved to
+  tool-handler level in spec_plan). Resolved by taking upstream side; commit
+  skipped as empty. No local cache rewrite needed anymore.
+- a0909a00c conflicts resolved: `request_non_streaming` anchored after
+  truncation_policy in protocol/src/openai_models.rs and in the models-manager
+  fallback initializer (the obsolete parallel field line removed).
+- Verified on the rebuilt alpha.21 binary: gpt-5.6-sol default turn,
+  ox-alpha-free via --profile opengo (non-streaming path), deepseek-v4-flash
+  regression, tier2_stdio_smoke RESULT: OK.
+
+## Previous pin (0.148.0-alpha.15)
 - App build: 26.814.41407
-- Bundled CLI (app Resources/codex): 0.148.0-alpha.15
-- Upstream tag: rust-v0.148.0-alpha.15
-- Fork branch: mod-0.148.0-alpha.15
 - Fork commit: 308ff33a0 (82f043fe3 -> ae7326407 -> 647bbf0a2 -> 1efb81f15 -> 489022aa9 -> 6e11e883a; base ffe1de5ce)
 
 ## Binary
